@@ -1,0 +1,14 @@
+version: '3.9' 
+services:
+  123link:
+    privileged: true
+    container_name: 123link
+    image: dinding1/123link:latest
+    network_mode: host
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - P123_PASSPORT=${P123_PASSPORT}
+      - P123_PASSWORD=${P123_PASSWORD}
+    volumes:
+      - ./cache:/app/cache.db
