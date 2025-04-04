@@ -1,213 +1,211 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from p123 import P123Client, check_response, P123OSError
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import errno
 import sqlite3
 from contextlib import closing
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 import os
+from urllib.parse import unquote
+import hashlib
+import time
 
-# 读取 VERSION 文件中的版本号
+# ==================== 初始化配置 ====================
 def get_version():
     version_file = os.path.join(os.path.dirname(__file__), "VERSION")
-    if os.path.exists(version_file):
-        with open(version_file, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    return "未知版本"
+    return open(version_file).read().strip() if os.path.exists(version_file) else "8.8.8"  # 默认使用云盘协议版本
 
 VERSION = get_version()
 
-# 配置日志
+# ==================== 日志配置 ====================
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("direct_link_service.log"), logging.StreamHandler()]
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler("direct_link_service.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
-logger = logging.getLogger(__name__)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-scheduler_logger = logging.getLogger('apscheduler')
-scheduler_logger.setLevel(logging.WARNING)
+logger = logging.getLogger("123PanDirectLink")
 
-logger.info(
-    "\n-----------------------------------------\n"
-    "   欢迎使用123网盘直连服务\n\n"
-    "                      版本号：{}\n"
-    "-----------------------------------------".format(VERSION)
-)
+# ==================== 客户端配置 ====================
+class PanClient(P123Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.device_id = hashlib.md5(os.getenv("P123_PASSPORT", "").encode()).hexdigest()
+        self.update_headers()
+    
+    def update_headers(self):
+        self.headers = {
+            "accept": "application/json, text/plain, */*",
+            "accept-encoding": "gzip, deflate",
+            "accept-language": "zh-CN,zh;q=0.9",
+            "connection": "keep-alive",
+            "platform": "android",
+            "user-agent": "Mozilla/5.0 (Linux; Android 13; SM-G9910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
+            "x-client-version": "3.5.0",
+            "x-device-id": self.device_id,
+            "x-network-type": "WIFI",
+            "x-pan-version": VERSION,
+            "x-request-id": self.generate_request_id()
+        }
+    
+    def generate_request_id(self):
+        return f"{int(time.time()*1000)}{os.urandom(4).hex()}"
 
-# 初始化客户端
-client = P123Client(
+client = PanClient(
     passport=os.getenv("P123_PASSPORT"),
     password=os.getenv("P123_PASSWORD")
 )
-client.headers.update({
-    "platform": "android",
-    "user-agent": "Mozilla/5.0 (Linux; Android 13; SM-G988B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-    "origin": "https://m.123pan.com",
-    "x-requested-with": "com.cloud123.pan"
-})
-token_expiry = None
 
-# 数据库配置
-DB_DIR = "/app/data"
-DB_PATH = os.path.join(DB_DIR, "cache.db")
+# ==================== 数据库配置 ====================
+DB_PATH = "/app/data/cache.db"
 
 def init_db():
-    os.makedirs(DB_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with closing(sqlite3.connect(DB_PATH)) as conn:
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT NOT NULL,
-            size INTEGER NOT NULL,
-            etag TEXT NOT NULL,
-            s3keyflag TEXT NOT NULL,
-            download_url TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP GENERATED ALWAYS AS (DATETIME(created_at, '+20 hours')) STORED
-        )''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_main ON cache (file_name, size, etag, s3keyflag)''')
-        conn.commit()
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS file_cache (
+                file_sign TEXT PRIMARY KEY,
+                download_url TEXT NOT NULL,
+                create_time INTEGER DEFAULT (strftime('%s','now')),
+                expire_time INTEGER DEFAULT (strftime('%s','now') + 20*3600)
+            )''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS request_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_uri TEXT NOT NULL,
+                remote_addr TEXT,
+                user_agent TEXT,
+                created_at INTEGER DEFAULT (strftime('%s','now'))
+            )''')
 
 init_db()
 
-def clear_expired_entries():
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM cache WHERE expires_at < datetime('now')")
-        conn.commit()
+# ==================== 服务核心逻辑 ====================
+app = FastAPI(title="123云盘直链服务", debug=False)
 
-def clear_old_cache():
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    response = await call_next(request)
     with closing(sqlite3.connect(DB_PATH)) as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM cache WHERE id IN (SELECT id FROM cache ORDER BY created_at ASC LIMIT 100)")
-        conn.commit()
-        logger.info("已清理最旧100条缓存")
+        conn.execute(
+            "INSERT INTO request_log (request_uri, remote_addr, user_agent) VALUES (?,?,?)",
+            (str(request.url), request.client.host, request.headers.get("user-agent"))
+        )
+    return response
+
+def parse_pan_uri(uri: str) -> dict:
+    """解析123云盘官方URI格式"""
+    try:
+        # 格式: filename|size|etag[?params]
+        base, _, params = uri.partition('?')
+        filename, size, etag = base.split('|', 2)
+        
+        # 提取S3KeyFlag (格式: s3keyflag=xxx 或直接xxx)
+        s3keyflag = params.split('=', 1)[-1].split('&', 1)[0]
+        
+        return {
+            "filename": unquote(filename),
+            "size": int(size),
+            "etag": etag.lower(),  # 统一小写
+            "s3keyflag": s3keyflag
+        }
+    except Exception as e:
+        logger.error(f"URI解析失败: {uri} - {str(e)}")
+        raise ValueError("Invalid URI format")
+
+@app.get("/{uri:path}", status_code=status.HTTP_302_FOUND)
+@app.head("/{uri:path}")
+async def handle_direct_link(request: Request, uri: str):
+    try:
+        # 1. 解析请求参数
+        file_info = parse_pan_uri(uri)
+        file_sign = f"{file_info['etag']}:{file_info['s3keyflag']}"
+        
+        # 2. 检查缓存
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT download_url FROM file_cache WHERE file_sign=? AND expire_time > strftime('%s','now')",
+                (file_sign,)
+            )
+            if (row := cursor.fetchone()):
+                logger.info(f"[缓存命中] {file_sign[:16]}...")
+                return RedirectResponse(row[0])
+        
+        # 3. 构造官方请求参数
+        payload = {
+            "Etag": file_info['etag'],
+            "S3KeyFlag": file_info['s3keyflag'],
+            "FileName": file_info['filename'],
+            "Size": file_info['size'],
+            "FileID": 0,
+            "Type": 0,
+            "driveId": 0,
+            "_t": int(time.time() * 1000),  # 时间戳
+            "_r": os.urandom(8).hex()      # 随机数
+        }
+        
+        # 4. 获取下载链接
+        resp = check_response(client.download_info(payload))
+        download_url = resp["data"]["DownloadUrl"]
+        
+        # 5. 缓存结果
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO file_cache (file_sign, download_url) VALUES (?,?)",
+                (file_sign, download_url)
+            )
+        
+        logger.info(f"[直链生成] {file_info['filename']}")
+        return RedirectResponse(download_url)
+        
+    except ValueError as e:
+        return JSONResponse(
+            {"code": 400, "message": f"参数错误: {str(e)}"},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    except P123OSError as e:
+        logger.error(f"云盘接口错误: {e.args[1]}")
+        return JSONResponse(
+            {"code": 502, "message": "云盘服务暂时不可用"},
+            status_code=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as e:
+        logger.error(f"系统错误: {str(e)}", exc_info=True)
+        return JSONResponse(
+            {"code": 500, "message": "系统内部错误"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+# ==================== 定时任务 ====================
+def cleanup_tasks():
+    """每日清理任务"""
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        # 清理过期缓存
+        conn.execute("DELETE FROM file_cache WHERE expire_time <= strftime('%s','now')")
+        # 保留最近7天日志
+        conn.execute("DELETE FROM request_log WHERE created_at <= strftime('%s','now','-7 days')")
+        logger.info("定时清理任务执行完成")
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(clear_expired_entries, 'interval', minutes=30)
-scheduler.add_job(clear_old_cache, 'interval', hours=6)
+scheduler.add_job(cleanup_tasks, 'cron', hour=3, minute=30)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
-def login_client():
-    global client, token_expiry
-    try:
-        login_response = client.user_login(
-            {"passport": client.passport, "password": client.password, "remember": True},
-            async_=False
-        )
-        if isinstance(login_response, dict) and login_response.get("code") == 200:
-            token = login_response["data"]["token"]
-            expired_at = login_response["data"].get("expire")
-            token_expiry = datetime.fromisoformat(expired_at) if expired_at else datetime.now() + timedelta(days=30)
-            client.token = token
-            logger.info("登录成功，Token 已更新")
-        else:
-            raise P123OSError(errno.EIO, login_response)
-    except Exception as e:
-        logger.error(f"登录失败: {str(e)}", exc_info=True)
-        raise
-
-def ensure_token_valid():
-    global token_expiry
-    if token_expiry is None or datetime.now() >= token_expiry.replace(tzinfo=None):
-        logger.info("Token无效或过期，正在重新登录...")
-        login_client()
-
-login_client()
-
-app = FastAPI(debug=True)
-
-@app.get("/{uri:path}")
-@app.head("/{uri:path}")
-async def index(request: Request, uri: str):
-    try:
-        logger.info(f"收到请求: {request.url}")
-        ensure_token_valid()
-
-        # 严格校验URI格式
-        if uri.count("|") < 2 or "?" not in uri:
-            logger.error(f"非法URI格式: {uri}")
-            return JSONResponse(
-                {"state": False, "message": "URI格式应为 文件名|大小|etag?s3keyflag"},
-                status_code=400
-            )
-
-        # 解析参数
-        base_part, s3_key_flag = uri.split("?", 1)
-        parts = base_part.split("|")
-        if len(parts) != 3:
-            logger.error(f"参数数量错误: {uri}")
-            return JSONResponse(
-                {"state": False, "message": "需要3个参数: 文件名|大小|etag"},
-                status_code=400
-            )
-
-        file_name, size_str, etag = parts
-        try:
-            size = int(size_str)
-        except ValueError:
-            logger.error(f"无效文件大小: {size_str}")
-            return JSONResponse(
-                {"state": False, "message": "文件大小必须为整数"},
-                status_code=400
-            )
-
-        # 构造payload
-        payload = {
-            "Etag": etag,
-            "S3KeyFlag": s3_key_flag,
-            "FileName": file_name,
-            "Size": size,
-            "FileID": 0,
-            "Type": 0,
-            "driveId": 0
-        }
-
-        # 检查缓存
-        with closing(sqlite3.connect(DB_PATH)) as conn:
-            c = conn.cursor()
-            c.execute('''SELECT download_url FROM cache 
-                      WHERE file_name=? AND size=? AND etag=? AND s3keyflag=?
-                      AND expires_at > datetime('now')''',
-                      (file_name, size, etag, s3_key_flag))
-            if (row := c.fetchone()):
-                logger.info(f"缓存命中: {file_name}")
-                return RedirectResponse(row[0], 302)
-
-        # 获取下载链接
-        download_resp = check_response(client.download_info(payload))
-        download_url = download_resp["data"]["DownloadUrl"]
-
-        # 写入缓存
-        with closing(sqlite3.connect(DB_PATH)) as conn:
-            c = conn.cursor()
-            c.execute('''INSERT INTO cache 
-                       (file_name, size, etag, s3keyflag, download_url)
-                       VALUES (?,?,?,?,?)''',
-                       (file_name, size, etag, s3_key_flag, download_url))
-            conn.commit()
-
-        logger.info(f"302重定向成功: {file_name}")
-        return RedirectResponse(download_url, 302)
-
-    except P123OSError as e:
-        logger.error(f"云盘接口错误: {str(e)}")
-        return JSONResponse(
-            {"state": False, "message": f"云盘服务错误: {e.args[1].get('message', '未知错误')}"},
-            status_code=502
-        )
-    except Exception as e:
-        logger.error(f"处理失败: {str(e)}", exc_info=True)
-        return JSONResponse(
-            {"state": False, "message": f"内部服务器错误: {str(e)}"},
-            status_code=500
-        )
-
+# ==================== 启动服务 ====================
 if __name__ == "__main__":
-    from uvicorn import run
-    run(app, host="0.0.0.0", port=8123, log_level="warning")
+    import uvicorn
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8123,
+        log_level="info",
+        proxy_headers=True,
+        server_header=False
+    )
