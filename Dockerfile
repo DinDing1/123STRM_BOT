@@ -22,7 +22,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     libmagic1 \
-    libcap2-bin \  # 包含 setcap 的完整包
+    libcap2-bin \ 
     procps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
