@@ -11,6 +11,7 @@ import atexit
 import os
 import base64
 from urllib.parse import urlparse, parse_qs, urlencode, unquote
+import random
 
 # 读取 VERSION 文件中的版本号
 def get_version():
@@ -42,13 +43,13 @@ scheduler_logger.setLevel(logging.WARNING)
 # 输出欢迎消息
 logger.info(
     "\n-----------------------------------------\n"
-    "   123网盘直连服务 (VIP破解版)\n\n"
+    "   123网盘直连服务 (VIP破解增强版)\n\n"
     "                      版本号：{}\n"
     "-----------------------------------------".format(VERSION)
 )
 
 def modify_download_url(original_url: str) -> str:
-    """模拟用户脚本的下载链接修改逻辑"""
+    """深度链接修改逻辑"""
     try:
         parsed = urlparse(original_url)
         
@@ -57,10 +58,14 @@ def modify_download_url(original_url: str) -> str:
             params = parsed.query.split("params=")[1]
             decoded = unquote(base64.b64decode(params).decode())
             
-            # 强制关闭自动重定向
+            # 添加破解参数
             new_params = urlparse(decoded)
             query = parse_qs(new_params.query)
-            query["auto_redirect"] = ["0"]
+            query.update({
+                "auto_redirect": ["0"],
+                "speed_limit": ["0"],
+                "vip_channel": ["1"]
+            })
             
             # 重新构建参数
             new_query = urlencode(query, doseq=True)
@@ -70,7 +75,11 @@ def modify_download_url(original_url: str) -> str:
         # 处理其他域名的情况
         else:
             query = parse_qs(parsed.query)
-            query["auto_redirect"] = ["0"]
+            query.update({
+                "auto_redirect": ["0"],
+                "speed_limit": ["0"], 
+                "vip_channel": ["1"]
+            })
             return parsed._replace(query=urlencode(query, doseq=True)).geturl()
             
     except Exception as e:
@@ -78,46 +87,102 @@ def modify_download_url(original_url: str) -> str:
         return original_url
 
 class PatchedP123Client(P123Client):
-    """添加VIP破解功能的客户端"""
+    """深度破解客户端"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.storage_quota = int(os.getenv("P123_STORAGE_QUOTA", 2099511627776))  # 默认1TB
+        self.storage_used = int(os.getenv("P123_STORAGE_USED", 10048576))  # 默认已用1MB
+        self.vip_expire = int(os.getenv("P123_VIP_EXPIRE", 253402185600))  # 2099年过期
     
     def _request_headers(self) -> dict:
         base_headers = super()._request_headers()
         base_headers.update({
-            "user-agent": "123pan/v2.4.7 (Android_10.0;Xiaomi)",
+            "user-agent": "123pan/v2.4.7 (Android_13.0;Xiaomi 14 Ultra)",
             "platform": "android",
             "app-version": "69",
             "x-app-version": "2.4.7",
-            "x-vip-status": "2",  # 强制标识为SVIP
-            "x-vip-expire": "253402185600"  # 2099年过期
+            "x-vip-status": "2",
+            "x-vip-expire": str(self.vip_expire),
+            "x-storage-quota": str(self.storage_quota),
+            "x-storage-used": str(self._get_dynamic_used_space()),
+            "x-device-id": "38DBA3E9-1234-5678-9ABC-DEF123456789"
         })
         return base_headers
+    
+    def _get_dynamic_used_space(self):
+        """生成动态使用空间数据"""
+        base_used = self.storage_used
+        fluctuation = random.randint(-51200, 51200)  # ±50KB波动
+        return max(0, base_used + fluctuation)
+
+    def user_info(self):
+        """重写用户信息获取"""
+        original_info = super().user_info()
+        if isinstance(original_info, dict) and original_info.get("code") == 200:
+            # 修改关键信息
+            original_info["data"].update({
+                "Vip": True,
+                "VipLevel": 2,
+                "TotalSize": self.storage_quota,
+                "UsedSize": self._get_dynamic_used_space(),
+                "IsShowAdvertisement": False,
+                "UserVipDetailInfos": [{
+                    "VipDesc": "SVIP 会员",
+                    "TimeDesc": "2099-12-31 到期",
+                    "IsUse": True
+                }]
+            })
+        return original_info
 
     def download_info(self, payload):
-        """重写下载信息获取"""
-        response = super().download_info(payload)
-        if isinstance(response, dict) and response.get("data"):
-            # 修改下载链接
-            if "DownloadUrl" in response["data"]:
-                response["data"]["DownloadUrl"] = modify_download_url(response["data"]["DownloadUrl"])
-            if "DownloadURL" in response["data"]:  # 处理大小写不一致情况
-                response["data"]["DownloadURL"] = modify_download_url(response["data"]["DownloadURL"])
-        return response
+        """增强版下载信息获取"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = super().download_info(payload)
+                if isinstance(response, dict) and response.get("data"):
+                    # 修改下载链接
+                    if "DownloadUrl" in response["data"]:
+                        response["data"]["DownloadUrl"] = modify_download_url(response["data"]["DownloadUrl"])
+                    if "DownloadURL" in response["data"]:
+                        response["data"]["DownloadURL"] = modify_download_url(response["data"]["DownloadURL"])
+                    # 更新虚拟存储空间
+                    self._update_virtual_storage(payload.get("Size", 0))
+                return response
+            except P123OSError as e:
+                if "空间已满" in str(e) and attempt < max_retries - 1:
+                    logger.warning(f"触发虚拟空间重置 (尝试 {attempt+1}/{max_retries})")
+                    self._reset_virtual_storage()
+                    continue
+                raise
+    
+    def _update_virtual_storage(self, file_size: int):
+        """更新虚拟存储空间"""
+        self.storage_used = min(
+            self.storage_quota,
+            self.storage_used + int(file_size * 0.1)  # 实际只记录10%大小
+        logger.debug(f"虚拟存储更新: 已用空间 {self.storage_used} bytes")
+
+    def _reset_virtual_storage(self):
+        """重置虚拟存储空间"""
+        self.storage_used = int(os.getenv("P123_STORAGE_USED", 1048576))
+        logger.warning("虚拟存储空间已重置")
 
 # 初始化客户端
 client = PatchedP123Client(
     passport=os.getenv("P123_PASSPORT"),
     password=os.getenv("P123_PASSWORD")
 )
-token_expiry = None  # 用于存储 Token 的过期时间
+token_expiry = None
 
 # SQLite 缓存数据库路径
 DB_DIR = "/app/data"
 DB_PATH = os.path.join(DB_DIR, "cache.db")
 
 def init_db():
-    """初始化 SQLite 数据库"""
+    """初始化数据库"""
     os.makedirs(DB_DIR, exist_ok=True)
-    
     with closing(sqlite3.connect(DB_PATH)) as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS cache (
@@ -149,51 +214,56 @@ def clear_all_cache():
         conn.commit()
         logger.info("已清空全部缓存")
 
-# 初始化定时任务
+# 定时任务配置
 scheduler = BackgroundScheduler()
 scheduler.add_job(clear_all_cache, 'interval', hours=48)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
 def login_client():
-    """登录并更新 Token 和过期时间"""
+    """增强登录逻辑"""
     global client, token_expiry
-    try:
-        login_response = client.user_login(
-            {"passport": client.passport, "password": client.password, "remember": True},
-            async_=False
-        )
-        if isinstance(login_response, dict) and login_response.get("code") == 200:
-            token = login_response["data"]["token"]
-            expired_at = login_response["data"].get("expire")
-            if expired_at:
-                token_expiry = datetime.fromisoformat(expired_at)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            login_response = client.user_login(
+                {"passport": client.passport, "password": client.password, "remember": True},
+                async_=False
+            )
+            if isinstance(login_response, dict) and login_response.get("code") == 200:
+                token = login_response["data"]["token"]
+                expired_at = login_response["data"].get("expire")
+                token_expiry = datetime.fromisoformat(expired_at) if expired_at else datetime.now() + timedelta(days=30)
+                client.token = token
+                logger.info("登录成功，Token 已更新")
+                return
             else:
-                token_expiry = datetime.now() + timedelta(days=30)
-            client.token = token
-            logger.info("登录成功，Token 已更新")
-        else:
-            logger.error(f"登录失败: {login_response}")
-            raise P123OSError(errno.EIO, login_response)
-    except Exception as e:
-        logger.error(f"登录时发生错误: {str(e)}", exc_info=True)
-        raise
+                logger.error(f"登录失败: {login_response}")
+                if attempt < max_retries - 1:
+                    logger.info(f"登录重试中 ({attempt+1}/{max_retries})")
+                    time.sleep(2 ** attempt)
+                    continue
+                raise P123OSError(errno.EIO, login_response)
+        except Exception as e:
+            logger.error(f"登录错误: {str(e)}")
+            if attempt == max_retries - 1:
+                raise
 
 def ensure_token_valid():
-    """确保 Token 有效"""
+    """增强Token验证"""
     global token_expiry
     if token_expiry is None:
-        logger.info("Token 未初始化，正在重新登录...")
+        logger.info("Token未初始化，正在重新登录...")
         login_client()
     else:
         token_expiry_naive = token_expiry.replace(tzinfo=None)
-        if datetime.now() >= token_expiry_naive:
-            logger.info("Token 已过期，正在重新登录...")
+        if datetime.now() >= token_expiry_naive - timedelta(minutes=5):  # 提前5分钟续期
+            logger.info("Token即将过期，主动续期...")
             login_client()
 
 login_client()
 
-app = FastAPI(debug=True)
+app = FastAPI(debug=False)
 
 @app.get("/{uri:path}")
 @app.head("/{uri:path}")
@@ -204,17 +274,21 @@ async def index(request: Request, uri: str):
         ensure_token_valid()
 
         if uri.count("|") < 2:
-            logger.error("URI 格式错误，应为 '文件名|大小|etag'")
-            return JSONResponse({"state": False, "message": "URI 格式错误，应为 '文件名|大小|etag'"}, 400)
+            return JSONResponse({"state": False, "message": "URI格式错误"}, 400)
 
         parts = uri.split("|")
-        file_name = parts[0]
-        size = int(parts[1])
-        etag = parts[2].split("?")[0]
+        file_name, size_str, etag_part = parts[0], parts[1], parts[2]
+        try:
+            size = int(size_str)
+            etag = etag_part.split("?")[0]
+        except ValueError:
+            return JSONResponse({"state": False, "message": "参数类型错误"}, 400)
+
         s3_key_flag = request.query_params.get("s3keyflag", "")
 
         clear_expired_entries()
 
+        # 缓存查询
         with closing(sqlite3.connect(DB_PATH)) as conn:
             c = conn.cursor()
             c.execute('''SELECT download_url FROM cache 
@@ -225,10 +299,22 @@ async def index(request: Request, uri: str):
                 logger.info(f"缓存命中: {file_name}")
                 return RedirectResponse(row[0], 302)
 
+        # 处理下载请求
         payload = {"FileName": file_name, "Size": size, "Etag": etag, "S3KeyFlag": s3_key_flag}
-        download_resp = check_response(client.download_info(payload))
+        
+        try:
+            download_resp = check_response(client.download_info(payload))
+        except P123OSError as e:
+            if "空间已满" in str(e):
+                logger.warning("触发虚拟空间重置机制")
+                client._reset_virtual_storage()
+                download_resp = check_response(client.download_info(payload))
+            else:
+                raise
+
         download_url = download_resp["data"].get("DownloadUrl") or download_resp["data"].get("DownloadURL")
 
+        # 写入缓存
         with closing(sqlite3.connect(DB_PATH)) as conn:
             c = conn.cursor()
             c.execute('''INSERT INTO cache 
