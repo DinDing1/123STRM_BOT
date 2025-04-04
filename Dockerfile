@@ -19,9 +19,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装系统依赖
+# 第二阶段：运行时环境
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    sqlite3 libmagic1 \
+    sqlite3 libmagic1 libcap2-bin \
+    && setcap cap_net_bind_service=+ep /usr/local/bin/uvicorn \
     && rm -rf /var/lib/apt/lists/*
 
 # 从构建阶段复制已安装的 Python 依赖
