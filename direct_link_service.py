@@ -158,11 +158,12 @@ class PatchedP123Client(P123Client):
                 raise
     
     def _update_virtual_storage(self, file_size: int):
-        """更新虚拟存储空间"""
-        self.storage_used = min(
-            self.storage_quota,
-            self.storage_used + int(file_size * 0.1)  # 实际只记录10%大小
-        logger.debug(f"虚拟存储更新: 已用空间 {self.storage_used} bytes")
+    """更新虚拟存储空间"""
+    self.storage_used = min(
+        self.storage_quota,
+        self.storage_used + int(file_size * 0.1)  # 实际只记录10%大小
+    )  # 正确的括号闭合
+    logger.debug(f"虚拟存储更新: 已用空间 {self.storage_used} bytes")
 
     def _reset_virtual_storage(self):
         """重置虚拟存储空间"""
