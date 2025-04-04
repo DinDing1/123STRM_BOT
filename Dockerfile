@@ -18,16 +18,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装系统依赖（修正版）
+# 安装系统依赖（最终修正版）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     libmagic1 \
-    libcap2 \
+    libcap2-bin \  # 包含 setcap 的完整包
     procps \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && setcap cap_net_bind_service=+ep $(which uvicorn) \
-    && chmod u+s $(which uvicorn)
+    && rm -rf /var/lib/apt/lists/*
 
 # 从构建阶段复制已安装的 Python 依赖
 COPY --from=builder /root/.local /root/.local
@@ -46,5 +44,9 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
 
-# 运行命令
+# 设置能力（必须在单独的 RUN 指令中执行）
+RUN setcap cap_net_bind_service=+ep $(which uvicorn) || true \
+    && chmod u+s $(which uvicorn) || true
+
+# 运行命令（非特权端口方案）
 CMD ["uvicorn", "direct_link_service:app", "--host", "0.0.0.0", "--port", "8123", "--log-level", "warning"]
