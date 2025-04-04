@@ -1,52 +1,23 @@
-# 第一阶段：构建环境
-FROM python:3.12-slim as builder
-
-WORKDIR /app
-
-# 安装编译依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc python3-dev libmagic-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-
-# 安装 Python 依赖
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# 第二阶段：运行时环境
+# 使用官方 Python 基础镜像
 FROM python:3.12-slim
 
+# 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖（最终修正版）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    sqlite3 \
-    libmagic1 \
-    libcap2-bin \ 
-    procps \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# 安装依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 从构建阶段复制已安装的 Python 依赖
-COPY --from=builder /root/.local /root/.local
+# 复制应用代码
+COPY . .
 
-# 确保脚本使用的 Python 依赖在 PATH 中
-ENV PATH=/root/.local/bin:$PATH
+# 暴露端口
+EXPOSE 8123
 
-# 复制应用文件
-COPY direct_link_service.py .
-COPY VERSION .
+# 设置环境变量（默认值）
+ENV DEBUG=false
+ENV P123_PASSPORT=your_passport
+ENV P123_PASSWORD=your_password
 
-# 创建数据目录
-RUN mkdir -p /app/data && chmod 777 /app/data
-
-# 设置容器时区
-ENV TZ=Asia/Shanghai
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
-
-# 设置能力（必须在单独的 RUN 指令中执行）
-RUN setcap cap_net_bind_service=+ep $(which uvicorn) || true \
-    && chmod u+s $(which uvicorn) || true
-
-# 运行命令（非特权端口方案）
-CMD ["uvicorn", "direct_link_service:app", "--host", "0.0.0.0", "--port", "8123", "--log-level", "warning"]
+# 运行应用
+CMD ["uvicorn", "direct_link_service:app", "--host", "0.0.0.0", "--port", "8123"]
