@@ -13,5 +13,5 @@ services:
       - HTTP_PROXY=http://10.10.10.14:7890
       - HTTPS_PROXY=https://10.10.10.14:7890
     volumes:
-      - ./cache:/app/strm_output
+      - /vol1/1000/media/STRM中转站:/app/strm_output
 
