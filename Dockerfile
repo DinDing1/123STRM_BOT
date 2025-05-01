@@ -21,4 +21,4 @@ ENV OUTPUT_ROOT=/app/strm_output
 RUN mkdir -p ${OUTPUT_ROOT}
 
 # 启动命令
-CMD ["python", "your_script_name.py"]  # 替换为实际脚本文件名
+CMD ["python", ""]  # 替换为实际脚本文件名
