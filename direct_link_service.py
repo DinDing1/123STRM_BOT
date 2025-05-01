@@ -12,9 +12,9 @@ from urllib.parse import unquote, urlparse
 init(autoreset=True)  # 自动重置颜色样式
 
 class Config:
-    TG_TOKEN = "5869372349:AAEYktPRZlsNAf-PkCRGcyaxb65vh4f5unQ"
-    BASE_URL = "http://10.10.10.11:8123"
-    OUTPUT_ROOT = "./strm_output"
+    TG_TOKEN = os.getenv("TG_TOKEN", "")      # 从环境变量获取
+    BASE_URL = os.getenv("BASE_URL", "")      # 从环境变量获取
+    OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
