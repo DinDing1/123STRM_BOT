@@ -1,24 +1,28 @@
-# Dockerfile
-FROM python:3.12-slim
+FROM python:3.12-slim as builder
 
 WORKDIR /app
+COPY requirements.txt .
 
-# 安装系统依赖（如果需要）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
+    zlib1g-dev && \
+    pip install --user --no-cache-dir -r requirements.txt
 
-# 复制项目文件
+FROM python:3.12-slim
+WORKDIR /app
+COPY --from=builder /root/.local /root/.local
 COPY . .
 
-# 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 设置环境变量默认值
+ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONPATH=/app
 ENV OUTPUT_ROOT=/app/strm_output
 
-# 创建输出目录
-RUN mkdir -p ${OUTPUT_ROOT}
+RUN mkdir -p ${OUTPUT_ROOT} && \
+    chmod 777 ${OUTPUT_ROOT}
 
 # 启动命令
-CMD ["python", "123strm.py"]  # 替换为实际脚本文件名
+CMD ["python", "123strm.py"] 
