@@ -81,8 +81,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
         await update.message.reply_text(
             "❌ 链接格式错误！示例：\n"
-            "https://123pan.com/s/xxx提取码:1234\n"
-            "https://123.com/s/xxx 密码1234"
         )
         return
     
