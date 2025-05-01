@@ -1,14 +1,15 @@
 version: '3.9' 
 services:
-  123link:
+  123strm:
     privileged: true
-    container_name: 123link
-    image: dinding1/123link:latest
+    container_name: 123strm
+    image: dinding1/123strm:v3.0
     network_mode: host
     restart: always
     environment:
       - TZ=Asia/Shanghai
-      - P123_PASSPORT=${P123_PASSPORT}
-      - P123_PASSWORD=${P123_PASSWORD}
+      - TG_TOKEN=5869372349:AAEYktPRZlsNAf-PkCRGcyaxb65vh4f5unQ
+      - BASE_URL=http://172.17.0.1:8123
     volumes:
-      - ./cache:/app/cache.db
+      - ./cache:/app/strm_output
+
