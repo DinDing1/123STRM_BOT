@@ -1,23 +1,24 @@
-# 使用官方 Python 基础镜像
+# Dockerfile
 FROM python:3.12-slim
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 安装系统依赖（如果需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# 复制应用代码
+# 复制项目文件
 COPY . .
 
-# 暴露端口
-EXPOSE 8123
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 设置环境变量（默认值）
-ENV DEBUG=false
-ENV P123_PASSPORT=your_passport
-ENV P123_PASSWORD=your_password
+# 设置环境变量默认值
+ENV OUTPUT_ROOT=/app/strm_output
 
-# 运行应用
-CMD ["uvicorn", "direct_link_service:app", "--host", "0.0.0.0", "--port", "8123"]
+# 创建输出目录
+RUN mkdir -p ${OUTPUT_ROOT}
+
+# 启动命令
+CMD ["python", "your_script_name.py"]  # 替换为实际脚本文件名
