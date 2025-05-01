@@ -9,18 +9,19 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from urllib.parse import unquote, urlparse
 
 # 初始化colorama
-init(autoreset=True)  # 自动重置颜色样式
+init(autoreset=True)
 
 class Config:
-    TG_TOKEN = os.getenv("TG_TOKEN", "")      # 从环境变量获取
-    BASE_URL = os.getenv("BASE_URL", "")      # 从环境变量获取
+    TG_TOKEN = os.getenv("TG_TOKEN", "")     
+    BASE_URL = os.getenv("BASE_URL", "")     
+    PROXY_URL = os.getenv("PROXY_URL", "")   # 仅用于Telegram通信
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
 
 def generate_strm_files(domain: str, share_key: str, share_pwd: str):
-    """生成STRM文件及字幕文件"""
+    """生成STRM文件及字幕文件（字幕直连下载）"""
     base_url = Config.BASE_URL.rstrip('/')
     counts = {'video': 0, 'subtitle': 0, 'error': 0}
     
@@ -50,6 +51,7 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
                 download_url = f"https://{domain}/{raw_uri}"
                 for retry in range(3):
                     try:
+                        # 直连下载（已移除代理配置）
                         response = requests.get(
                             download_url,
                             headers={'User-Agent': 'Mozilla/5.0', 'Referer': f'https://{domain}/'},
@@ -79,9 +81,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pattern = r'(https?://[^\s/]+/s/)([\w-]+)[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4})'
     
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
-        await update.message.reply_text(
-            "❌ 链接格式错误！示例：\n"
-        )
+        await update.message.reply_text("❌ 链接格式错误！")
         return
     
     domain = urlparse(match.group(1)).netloc
@@ -103,7 +103,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
-    app = Application.builder().token(Config.TG_TOKEN).build()
+    
+    # 仅Telegram使用代理
+    builder = Application.builder().token(Config.TG_TOKEN)
+    if Config.PROXY_URL:
+        # 配置HTTP代理（仅限Telegram API）
+        builder = builder.proxy_url(Config.PROXY_URL).get_updates_proxy_url(Config.PROXY_URL)
+        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
+    
+    app = builder.build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print(f"{Fore.GREEN}🤖 机器人已启动 | 输出目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
     app.run_polling()
