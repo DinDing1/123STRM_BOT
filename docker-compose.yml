@@ -10,6 +10,8 @@ services:
       - TZ=Asia/Shanghai
       - TG_TOKEN=5869372349:AAEYktPRZlsNAf-PkCRGcyaxb65vh4f5unQ
       - BASE_URL=http://172.17.0.1:8123
+      - HTTP_PROXY=http://10.10.10.14:7890
+      - HTTPS_PROXY=https://10.10.10.14:7890
     volumes:
       - ./cache:/app/strm_output
 
