@@ -12,16 +12,16 @@ from urllib.parse import unquote, urlparse
 init(autoreset=True)
 
 class Config:
-    TG_TOKEN = os.getenv("TG_TOKEN", "")     
-    BASE_URL = os.getenv("BASE_URL", "")     
-    PROXY_URL = os.getenv("PROXY_URL", "")   # 仅用于Telegram通信
+    TG_TOKEN = os.getenv("TG_TOKEN", "")      # 从环境变量获取Telegram令牌
+    BASE_URL = os.getenv("BASE_URL", "")      # 媒体服务器基础地址
+    PROXY_URL = os.getenv("PROXY_URL", "")    # 代理服务器地址
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
 
 def generate_strm_files(domain: str, share_key: str, share_pwd: str):
-    """生成STRM文件及字幕文件（字幕直连下载）"""
+    """生成STRM文件及字幕文件"""
     base_url = Config.BASE_URL.rstrip('/')
     counts = {'video': 0, 'subtitle': 0, 'error': 0}
     
@@ -51,7 +51,6 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
                 download_url = f"https://{domain}/{raw_uri}"
                 for retry in range(3):
                     try:
-                        # 直连下载（已移除代理配置）
                         response = requests.get(
                             download_url,
                             headers={'User-Agent': 'Mozilla/5.0', 'Referer': f'https://{domain}/'},
@@ -76,12 +75,12 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
     return counts
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """消息处理器"""
+    """处理Telegram消息"""
     msg = update.message.text
     pattern = r'(https?://[^\s/]+/s/)([\w-]+)[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4})'
     
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
-        await update.message.reply_text("❌ 链接格式错误！")
+        await update.message.reply_text("❌ 链接格式错误！示例：\nhttps://xxx.xxx/s/xxxxxx 提取码：1234")
         return
     
     domain = urlparse(match.group(1)).netloc
@@ -104,11 +103,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
     
-    # 仅Telegram使用代理
+    # 初始化带代理的Bot
     builder = Application.builder().token(Config.TG_TOKEN)
     if Config.PROXY_URL:
-        # 配置HTTP代理（仅限Telegram API）
-        builder = builder.proxy_url(Config.PROXY_URL).get_updates_proxy_url(Config.PROXY_URL)
+        builder = (
+            builder
+            .proxy(url=Config.PROXY_URL)  # 新版代理配置方式
+            .get_updates_proxy(url=Config.PROXY_URL)
+        )
         print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
     
     app = builder.build()
