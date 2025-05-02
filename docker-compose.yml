@@ -3,15 +3,21 @@ services:
   123strm:
     privileged: true
     container_name: 123strm
-    image: dinding1/123strm:v3.0
+    image: dinding1/123strm_bot:latest
     network_mode: host
     restart: always
     environment:
       - TZ=Asia/Shanghai
-      - TG_TOKEN=5869372349:AAEYktPRZlsNAf-PkCRGcyaxb65vh4f5unQ
-      - BASE_URL=http://172.17.0.1:8123
-      - HTTP_PROXY=http://10.10.10.14:7890
-      - HTTPS_PROXY=https://10.10.10.14:7890
+      - TG_TOKEN= #TGBOT_TOKEN
+      - BASE_URL=http://172.17.0.1:8123  #直链地址如果host就是8123 
+      - PROXY_URL= #HTTP代理地址可选，机器能访问TG则不需要
+      - P123_PASSPORT= #123云盘账号
+      - P123_PASSWORD= #123云盘密码
+      - AUTH_KEY= #鉴权码
+      #- AUTH_API_URL= #鉴权地址可选，一般不需要
     volumes:
-      - /vol1/1000/media/STRM中转站:/app/strm_output
+      - /vol1/1000/media/STRM中转站:/app/strm_output #strm输出地方
+      - /vol2/1000/docker/123strm/data:/app/data
+      - /vol2/1000/docker/123strm/config:/app/config
 
+    
