@@ -49,5 +49,8 @@ RUN chmod 777 /app/data /app/strm_output
 # 设置权限
 RUN chmod +x /app/auth_check.sh
 
+# 启动命令
+ENTRYPOINT ["/app/auth_check.sh"]
+
 # 使用优化后的supervisord配置
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
