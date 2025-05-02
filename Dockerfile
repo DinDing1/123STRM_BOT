@@ -33,7 +33,7 @@ RUN mkdir -p \
 COPY --from=builder /root/.local /root/.local
 
 # 复制应用文件
-COPY 123strm.py direct_link_service.py VERSION ./
+COPY 123strm.py direct_link_service.py auth_check.sh VERSION ./
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 
 # 设置环境变量
