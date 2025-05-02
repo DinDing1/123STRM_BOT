@@ -29,8 +29,6 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 scheduler_logger = logging.getLogger('apscheduler')
 scheduler_logger.setLevel(logging.WARNING)
-# 在direct_link_service.py中添加日志过滤器
-logging.getLogger("uvicorn.access").disabled = True  
 
 logger.info(
     "\n-----------------------------------------\n"
