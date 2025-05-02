@@ -1,4 +1,6 @@
+#strm依赖
 python-123-client>=0.0.5
 python-telegram-bot==21.0
 requests==2.31.0
 colorama==0.4.6
+#直链依赖
