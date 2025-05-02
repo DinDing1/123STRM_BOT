@@ -2,11 +2,9 @@
 FROM python:3.12-slim as builder
 
 WORKDIR /app
-
-# 复制依赖文件
 COPY requirements.txt .
 
-# 安装所有Python依赖
+# 安装构建依赖
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # 第二阶段：运行时环境
@@ -26,10 +24,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 WORKDIR /app
 RUN mkdir -p \
     /app/data \
-    /app/strm_output \
-    /var/log/supervisor
+    /app/strm_output
 
-# 从构建阶段复制已安装的依赖
+# 从构建阶段复制依赖
 COPY --from=builder /root/.local /root/.local
 
 # 复制应用文件
@@ -39,11 +36,12 @@ COPY supervisord.conf /etc/supervisor/supervisord.conf
 # 设置环境变量
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
+    PYTHONWARNINGS="ignore" \
     OUTPUT_ROOT=/app/strm_output \
     DB_DIR=/app/data
 
 # 设置文件权限
 RUN chmod 777 /app/data /app/strm_output
 
-# 使用supervisord作为入口点
-ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+# 使用优化后的supervisord配置
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
