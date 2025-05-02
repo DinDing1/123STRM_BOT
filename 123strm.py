@@ -12,9 +12,9 @@ from urllib.parse import unquote, urlparse
 init(autoreset=True)
 
 class Config:
-    TG_TOKEN = os.getenv("TG_TOKEN", "")      # 从环境变量获取Telegram令牌
-    BASE_URL = os.getenv("BASE_URL", "")      # 媒体服务器基础地址
-    PROXY_URL = os.getenv("PROXY_URL", "")    # 代理服务器地址
+    TG_TOKEN = os.getenv("TG_TOKEN", "")     
+    BASE_URL = os.getenv("BASE_URL", "")     
+    PROXY_URL = os.getenv("PROXY_URL", "")   
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
@@ -75,7 +75,7 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
     return counts
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理Telegram消息"""
+    """处理消息"""
     msg = update.message.text
     pattern = r'(https?://[^\s/]+/s/)([\w-]+)[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4})'
     
@@ -103,13 +103,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
     
-    # 初始化带代理的Bot
+    # 修正后的代理配置
     builder = Application.builder().token(Config.TG_TOKEN)
     if Config.PROXY_URL:
         builder = (
             builder
-            .proxy(url=Config.PROXY_URL)  # 新版代理配置方式
-            .get_updates_proxy(url=Config.PROXY_URL)
+            .proxy(Config.PROXY_URL)  # 正确参数传递方式
+            .get_updates_proxy(Config.PROXY_URL)
         )
         print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
     
