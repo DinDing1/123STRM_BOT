@@ -32,6 +32,11 @@ RUN mkdir -p \
 # 从构建阶段复制依赖
 COPY --from=builder /root/.local /root/.local
 
+# 初始化配置
+VOLUME /app/data
+VOLUME /app/config
+VOLUME /app/strm_output
+
 # 复制应用文件
 COPY 123strm.py direct_link_service.py auth_check.sh VERSION ./
 COPY supervisord.conf /etc/supervisor/supervisord.conf
