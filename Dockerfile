@@ -38,6 +38,7 @@ COPY supervisord.conf /etc/supervisor/supervisord.conf
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONWARNINGS="ignore" \
+    UVICORN_LOG_LEVEL="info" \
     OUTPUT_ROOT=/app/strm_output \
     DB_DIR=/app/data
 
