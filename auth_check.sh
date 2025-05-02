@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 远程验证服务地址
-AUTH_API_URL="http://cc.38u.net:35000/verify"
+AUTH_API_URL="http://10.10.10.107:5000/verify"
 MAX_RETRIES=3
 DEVICE_ID_FILE="/app/config/device_id"  # 修改为子目录路径
 
