@@ -25,7 +25,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 WORKDIR /app
 RUN mkdir -p \
     /app/data \
-    /app/config \
+    #/app/config \
     /app/strm_output \
     && chmod 777 /app
 
@@ -34,11 +34,11 @@ COPY --from=builder /root/.local /root/.local
 
 # 初始化配置
 VOLUME /app/data
-VOLUME /app/config
+#VOLUME /app/config
 VOLUME /app/strm_output
 
 # 复制应用文件
-COPY 123strm.py direct_link_service.py auth_check.sh VERSION ./
+COPY 123strm.py direct_link_service.py VERSION ./
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 
 # 设置环境变量
@@ -52,10 +52,10 @@ ENV PATH=/root/.local/bin:$PATH \
 RUN chmod 777 /app/data /app/strm_output
 
 # 设置权限
-RUN chmod +x /app/auth_check.sh
+#RUN chmod +x /app/auth_check.sh
 
 # 启动命令
-ENTRYPOINT ["/app/auth_check.sh"]
+#ENTRYPOINT ["/app/auth_check.sh"]
 
 # 使用优化后的supervisord配置
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
