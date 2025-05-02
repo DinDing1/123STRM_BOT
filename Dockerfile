@@ -25,7 +25,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 WORKDIR /app
 RUN mkdir -p \
     /app/data \
-    /app/strm_output
+    /app/config \
+    /app/strm_output \
+    && chmod 777 /app
 
 # 从构建阶段复制依赖
 COPY --from=builder /root/.local /root/.local
