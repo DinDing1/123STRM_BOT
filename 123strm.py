@@ -111,7 +111,7 @@ async def generate_strm_files(client: Async123Client, domain: str, share_key: st
                 if ext in Config.VIDEO_EXTENSIONS:
                     strm_path = os.path.splitext(output_path)[0] + '.strm'
                     async with aiofiles.open(strm_path, 'w', encoding='utf-8') as f:
-                        await f.write(f"{base_url}/{unquote(info['url'].split('://', 1)[-1]}")
+                        await f.write(f"{base_url}/{unquote(info['url'].split('://', 1)[-1])}")
                     counts['video'] += 1
                     print(f"{Fore.GREEN}✅ 视频文件：{info['relpath']}")
                 
