@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 import os
 import re
 import aiofiles
 import asyncio
 from datetime import datetime
 from colorama import init, Fore, Style
-from p123 import P123Client, check_response
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from urllib.parse import unquote, urlparse
@@ -20,58 +20,57 @@ class Config:
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
-    MAX_DEPTH = -1
-    # 123网盘账号凭证
     PAN_PASSPORT = os.getenv("PAN_PASSPORT", "")
     PAN_PASSWORD = os.getenv("PAN_PASSWORD", "")
 
-class Async123Client(P123Client):
-    """扩展异步客户端"""
+class Async123Client:
+    """异步123云盘客户端"""
+    def __init__(self, passport: str, password: str):
+        from p123 import P123Client
+        self.client = P123Client(passport, password)
+    
+    async def login(self):
+        """异步登录"""
+        await self.client.login(async_=True)
     
     async def async_share_iterdir(
-        self, 
-        share_key: str, 
-        share_pwd: str, 
+        self,
+        share_key: str,
+        share_pwd: str,
         domain: str = "www.123pan.com",
-        max_depth: int = -1,
-        predicate: callable = lambda x: True
+        max_depth: int = -1
     ) -> AsyncGenerator[dict, None]:
         """异步遍历分享目录"""
-        payload = {
-            "shareKey": share_key,
-            "passcode": share_pwd,
-            "domain": domain,
-            "Page": 1,
-            "limit": 1000  # 每页数量
-        }
+        from p123.tool import share_iterdir
         
-        while True:
-            resp = await self.get_share_list(payload, async_=True)
-            data = check_response(resp)
-            
-            for file_info in data["data"]["InfoList"]:
-                if predicate(file_info):
-                    yield file_info
-                    if max_depth != -1 and file_info["Depth"] >= max_depth:
-                        continue
-                    # 递归处理子目录（示例未实现分页）
-            
-            if data["data"]["NextPage"] == 0:
-                break
-            payload["Page"] += 1
+        gen = share_iterdir(
+            share_key,
+            share_pwd,
+            parent_id=0,
+            max_depth=max_depth,
+            predicate=lambda x: not x["is_dir"],
+            async_=True,
+            client=self.client,
+            base_url=f"https://{domain}"
+        )
+        
+        async for info in gen:
+            # 标准化字段
+            info["url"] = info.get("uri", "").split("?")[0]
+            yield info
 
 async def generate_strm_files(client: Async123Client, domain: str, share_key: str, share_pwd: str) -> dict:
-    """异步生成STRM文件及字幕"""
+    """生成STRM文件及字幕文件"""
     counts = {'video': 0, 'subtitle': 0, 'error': 0}
     base_url = Config.BASE_URL.rstrip('/')
     
     print(f"{Fore.YELLOW}🚀 开始处理 {domain} 的分享：{share_key}")
 
     try:
-        async for info in client.async_share_iterdir(share_key, share_pwd, domain=domain, predicate=lambda x: not x["is_dir"]):
+        async for info in client.async_share_iterdir(share_key, share_pwd, domain=domain):
             try:
                 raw_uri = unquote(info["url"].split("://", 1)[-1])
-                relpath = info["path"].lstrip('/')
+                relpath = info["relpath"]
                 ext = os.path.splitext(relpath)[1].lower()
                 
                 if ext not in Config.VIDEO_EXTENSIONS + Config.SUBTITLE_EXTENSIONS:
@@ -89,7 +88,13 @@ async def generate_strm_files(client: Async123Client, domain: str, share_key: st
                 
                 elif ext in Config.SUBTITLE_EXTENSIONS:
                     download_url = f"https://{domain}/{raw_uri}"
-                    async with client.get(download_url, headers={'Referer': f'https://{domain}/'}, async_=True) as resp:
+                    async with self.client.client.request(
+                        download_url,
+                        method="GET",
+                        headers={'User-Agent': 'Mozilla/5.0', 'Referer': f'https://{domain}/'},
+                        async_=True
+                    ) as resp:
+                        resp.raise_for_status()
                         content = await resp.read()
                         async with aiofiles.open(output_path, 'wb') as f:
                             await f.write(content)
@@ -107,7 +112,7 @@ async def generate_strm_files(client: Async123Client, domain: str, share_key: st
     return counts
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """异步消息处理"""
+    """处理消息"""
     msg = update.message.text
     pattern = r'(https?://[^\s/]+/s/)([\w-]+)[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4})'
     
@@ -119,9 +124,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔄 开始处理 {domain} 的分享")
 
     try:
-        # 初始化异步客户端
+        # 初始化客户端
         client = Async123Client(Config.PAN_PASSPORT, Config.PAN_PASSWORD)
-        await client.login(async_=True)  # 异步登录
+        await client.login()
         
         start_time = datetime.now()
         report = await generate_strm_files(client, domain, match.group(2), match.group(3))
