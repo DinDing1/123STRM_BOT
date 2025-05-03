@@ -1,11 +1,10 @@
 #strm依赖
 python-123-client>=0.0.5
 python-telegram-bot==21.0
-requests==2.31.0
 colorama==0.4.6
-
 aiofiles==23.2.1
 aiohttp==3.9.5
+tenacity>=8.2.3
 
 #直链依赖
 fastapi>=0.68.0
