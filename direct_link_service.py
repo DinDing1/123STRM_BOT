@@ -32,7 +32,7 @@ scheduler_logger.setLevel(logging.WARNING)
 
 logger.info(
     "\n-----------------------------------------\n"
-    "   欢迎使用123网盘直连服务\n\n"
+    "   欢迎使用123网盘STRM直链服务\n\n"
     "                      版本号：{}\n"
     "-----------------------------------------".format(VERSION)
 )
