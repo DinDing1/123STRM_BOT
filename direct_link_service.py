@@ -94,7 +94,7 @@ def login_client():
             expired_at = login_response["data"].get("expire")
             token_expiry = datetime.fromisoformat(expired_at) if expired_at else datetime.now() + timedelta(days=30)
             client.token = token
-            logger.info("登录成功，Token 已更新")
+            logger.info("123云盘登录成功")
         else:
             logger.error(f"登录失败: {login_response}")
             raise P123OSError(errno.EIO, login_response)
