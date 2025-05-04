@@ -23,7 +23,7 @@ VERSION = get_version()
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("direct_link_service.log"), logging.StreamHandler()]
+    #handlers=[logging.FileHandler("direct_link_service.log"), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
