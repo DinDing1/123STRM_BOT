@@ -25,6 +25,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     #handlers=[logging.FileHandler("direct_link_service.log"), logging.StreamHandler()]
 )
+#测试日志记录
+logging.getLogger("uvicorn").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 scheduler_logger = logging.getLogger('apscheduler')
@@ -110,7 +115,7 @@ def ensure_token_valid():
 
 login_client()
 
-app = FastAPI(debug=True)
+app = FastAPI(debug=False)
 
 @app.get("/{uri:path}")
 @app.head("/{uri:path}")
@@ -172,6 +177,7 @@ async def index(request: Request, uri: str):
         logger.error(f"处理失败: {str(e)}", exc_info=True)
         return JSONResponse({"state": False, "message": f"内部错误: {str(e)}"}, 500)
 
+# 修改启动代码
 if __name__ == "__main__":
     from uvicorn import run
-    run(app, host="0.0.0.0", port=8123, log_level="warning")
+    run(app, host="0.0.0.0", port=8123, log_level="warning", access_log=False)
