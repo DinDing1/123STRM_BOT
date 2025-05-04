@@ -68,7 +68,7 @@ fi
 verify_auth_key() {
     local retries=0
     while [[ $retries -lt $MAX_RETRIES ]]; do
-        echo -e "\033[34m[INFO] 正在验证：auth_key=${AUTH_KEY}, device_id=${DEVICE_ID}\033[0m" >&2
+        echo -e "\033[34m[INFO] 正在验证：授权码=${AUTH_KEY}\033[0m" >&2
 
         # 发送请求并捕获完整响应
         response=$(
