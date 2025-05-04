@@ -84,7 +84,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     domain = urlparse(match.group(1)).netloc
-    await update.message.reply_text(f"🔄 开始处理 {domain} 的分享")
+    await update.message.reply_text(f"🔄 开始处理 {share_key} 的分享")
 
     try:
         start_time = datetime.now()
