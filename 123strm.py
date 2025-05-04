@@ -3,6 +3,7 @@ import os
 import re
 import aiofiles
 import asyncio
+import logging
 from datetime import datetime
 from colorama import init, Fore, Style
 from telegram import Update
@@ -12,8 +13,12 @@ from typing import AsyncGenerator
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from p123 import P123Client, check_response
 
-# 初始化colorama
+# 初始化日志和颜色输出
 init(autoreset=True)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
 class Config:
     TG_TOKEN = os.getenv("TG_TOKEN", "")     
@@ -24,8 +29,8 @@ class Config:
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     PAN_PASSPORT = os.getenv("PAN_PASSPORT", "")
     PAN_PASSWORD = os.getenv("PAN_PASSWORD", "")
-    REQUEST_INTERVAL = float(os.getenv("REQUEST_INTERVAL", "1.0"))  # 请求间隔秒数
-    MAX_RETRIES = int(os.getenv("MAX_RETRIES", "5"))  # 最大重试次数
+    REQUEST_INTERVAL = float(os.getenv("REQUEST_INTERVAL", "1.0"))
+    MAX_RETRIES = int(os.getenv("MAX_RETRIES", "5"))
 
 class Async123Client:
     """异步123云盘客户端"""
@@ -65,24 +70,33 @@ class Async123Client:
                 )
                 check_response(resp)
                 
+                # 验证响应数据结构
+                if not isinstance(resp.get("data"), dict):
+                    raise ValueError("Invalid data format in API response")
+                if not isinstance(resp["data"].get("InfoList"), list):
+                    raise ValueError("InfoList not found in response data")
+                
+                # 使用正确的分页字段
+                next_page = resp["data"].get("Next", 0)
+                
                 for info in resp["data"]["InfoList"]:
-                    if info["Type"]:  # 跳过目录
+                    if info.get("Type", 0):  # 跳过目录
                         continue
                         
                     # 标准化字段
                     info["url"] = info.get("DownloadURL", "")
-                    info["relpath"] = f"{info['FileName']}"
+                    info["relpath"] = info.get("FileName", "unknown")
                     yield info
                 
-                if resp["data"]["NextPage"] == 0:
+                if next_page == 0:
                     break
                     
                 page += 1
                 
             except Exception as e:
-                print(f"{Fore.RED}⚠️ 分页请求异常 (第{page}页): {str(e)}")
-                if page > 1 and "429" in str(e):
-                    print(f"{Fore.YELLOW}⏳ 触发频率限制，等待10秒后重试...")
+                logging.error(f"分页请求异常 (第{page}页): {str(e)}")
+                if "429" in str(e):
+                    logging.warning("触发频率限制，等待10秒后重试...")
                     await asyncio.sleep(10)
                     continue
                 raise
@@ -92,13 +106,13 @@ async def generate_strm_files(client: Async123Client, domain: str, share_key: st
     counts = {'video': 0, 'subtitle': 0, 'error': 0}
     base_url = Config.BASE_URL.rstrip('/')
     
-    print(f"{Fore.YELLOW}🚀 开始处理 {domain} 的分享：{share_key}")
+    logging.info(f"开始处理 {domain} 的分享：{share_key}")
 
     try:
         async for info in client.async_share_iterdir(share_key, share_pwd, domain=domain):
             try:
                 if not info["url"]:
-                    print(f"{Fore.YELLOW}⚠️ 跳过无下载链接的文件: {info['relpath']}")
+                    logging.warning(f"跳过无下载链接的文件: {info['relpath']}")
                     continue
 
                 ext = os.path.splitext(info["relpath"])[1].lower()
@@ -111,9 +125,10 @@ async def generate_strm_files(client: Async123Client, domain: str, share_key: st
                 if ext in Config.VIDEO_EXTENSIONS:
                     strm_path = os.path.splitext(output_path)[0] + '.strm'
                     async with aiofiles.open(strm_path, 'w', encoding='utf-8') as f:
-                        await f.write(f"{base_url}/{unquote(info['url'].split('://', 1)[-1])}")
+                        file_uri = unquote(info['url'].split('://', 1)[-1])
+                        await f.write(f"{base_url}/{file_uri}")
                     counts['video'] += 1
-                    print(f"{Fore.GREEN}✅ 视频文件：{info['relpath']}")
+                    logging.info(f"✅ 视频文件：{info['relpath']}")
                 
                 elif ext in Config.SUBTITLE_EXTENSIONS:
                     async with client.client.request(
@@ -127,15 +142,15 @@ async def generate_strm_files(client: Async123Client, domain: str, share_key: st
                         async with aiofiles.open(output_path, 'wb') as f:
                             await f.write(content)
                     counts['subtitle'] += 1
-                    print(f"{Fore.BLUE}📝 字幕文件：{info['relpath']}")
+                    logging.info(f"📝 字幕文件：{info['relpath']}")
 
             except Exception as e:
                 counts['error'] += 1
-                print(f"{Fore.RED}❌ 处理异常 [{info.get('relpath', '未知文件')}]: {str(e)}")
+                logging.error(f"处理异常 [{info.get('relpath', '未知文件')}]: {str(e)}")
     
     except Exception as e:
         counts['error'] += 1
-        print(f"{Fore.RED}🔥 遍历分享异常：{str(e)}")
+        logging.error(f"遍历分享异常：{str(e)}")
     
     return counts
 
@@ -177,9 +192,9 @@ if __name__ == "__main__":
     builder = Application.builder().token(Config.TG_TOKEN)
     if Config.PROXY_URL:
         builder = builder.proxy(Config.PROXY_URL).get_updates_proxy(Config.PROXY_URL)
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
+        logging.info(f"Telegram代理已启用：{Config.PROXY_URL}")
     
     app = builder.build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print(f"{Fore.GREEN}🤖 机器人已启动 | 输出目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
+    logging.info(f"机器人已启动 | 输出目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
     app.run_polling()
