@@ -115,5 +115,5 @@ if __name__ == "__main__":
     
     app = builder.build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print(f"{Fore.GREEN}🤖 机器人已启动 | 输出目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
+    print(f"{Fore.GREEN}🤖 TG机器人已启动 | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
     app.run_polling()
