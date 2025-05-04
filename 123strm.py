@@ -85,7 +85,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     domain = urlparse(match.group(1)).netloc
     share_key = match.group(2)
-    await update.message.reply_text(f"🔄 开始处理 {share_key} 的分享")
+    await update.message.reply_text(f"🔄 开始生成 {share_key} 的STRM")
 
     try:
         start_time = datetime.now()
