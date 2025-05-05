@@ -96,6 +96,97 @@ def get_all_records():
         cursor = conn.execute("SELECT * FROM strm_records WHERE status=1")
         return cursor.fetchall()
 
+def parse_strm_content(content):
+    """解析STRM文件内容"""
+    try:
+        uri = content.strip()
+        if not uri.startswith(("http://", "https://")):
+            uri = "http://" + uri
+        
+        parsed = urlparse(uri)
+        path_part = parsed.path.lstrip('/')
+        query_part = parsed.query
+        
+        # 分割路径部分
+        name_part, size_str, md5 = path_part.rsplit("|", 2)
+        file_size = int(size_str)
+        
+        # 验证MD5有效性
+        if len(md5) != 32 or not all(c in "0123456789abcdef" for c in md5):
+            raise ValueError("Invalid MD5 hash")
+        
+        # 获取s3_key_flag
+        s3_key_flag = query_part.split("&")[0] if query_part else ""
+        
+        return {
+            "name": unquote(name_part),
+            "file_size": file_size,
+            "md5": md5,
+            "s3_key_flag": s3_key_flag
+        }
+    except Exception as e:
+        raise ValueError(f"Invalid STRM content: {str(e)}")
+
+def import_strm_files():
+    counts = {
+        'imported': 0,
+        'skipped': 0,
+        'invalid': 0,
+        'errors': 0
+    }
+
+    print(f"{Fore.YELLOW}🚚 开始扫描STRM文件目录...")
+    
+    for root, _, files in os.walk(Config.OUTPUT_ROOT):
+        for filename in files:
+            if not filename.endswith('.strm'):
+                continue
+            
+            strm_path = os.path.abspath(os.path.join(root, filename))
+            try:
+                # 读取STRM文件内容
+                with open(strm_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # 解析内容
+                data = parse_strm_content(content)
+                
+                # 有效性检查
+                if data['file_size'] <= 0 or not data['s3_key_flag']:
+                    counts['invalid'] += 1
+                    print(f"{Fore.RED}⚠️ 无效记录：{strm_path}")
+                    continue
+                
+                # 检查数据库是否存在
+                if check_exists(data['file_size'], data['md5'], data['s3_key_flag']):
+                    counts['skipped'] += 1
+                    print(f"{Fore.CYAN}⏩ 跳过已存在记录：{strm_path}")
+                    continue
+                
+                # 插入数据库
+                try:
+                    add_record(
+                        file_name=data['name'],
+                        file_size=data['file_size'],
+                        md5=data['md5'],
+                        s3_key_flag=data['s3_key_flag'],
+                        strm_path=strm_path
+                    )
+                    counts['imported'] += 1
+                    print(f"{Fore.GREEN}✅ 导入成功：{strm_path}")
+                except sqlite3.IntegrityError:
+                    counts['skipped'] += 1
+                    print(f"{Fore.CYAN}⏩ 路径冲突：{strm_path}")
+                
+            except ValueError as e:
+                counts['invalid'] += 1
+                print(f"{Fore.RED}⚠️ 解析失败：{strm_path}\n{str(e)}")
+            except Exception as e:
+                counts['errors'] += 1
+                print(f"{Fore.RED}❌ 处理异常：{strm_path}\n{str(e)}")
+    
+    return counts
+
 def generate_strm_files(domain: str, share_key: str, share_pwd: str):
     counts = {
         'video': 0, 
@@ -252,8 +343,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_msg = (
             f"✅ 处理完成！\n"
             f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒\n"
-            f"🎬 新视频: {report['video']} \n"
-            f"📝 字幕: {report['subtitle']}\n"
+            f"🎬 新视频: {report['video']} | 📝 字幕: {report['subtitle']}\n"
             f"⏩ 跳过重复: {report['skipped']} | 重复ID: {id_ranges}"
         )
         if report['invalid']:
@@ -297,7 +387,6 @@ async def cancel_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ 已取消清空操作")
     return ConversationHandler.END
 
-
 async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理恢复指令"""
     try:
@@ -340,13 +429,30 @@ async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ 恢复失败：{str(e)}")
 
-
+async def handle_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理导入指令"""
+    try:
+        start_time = datetime.now()
+        report = import_strm_files()
+        
+        result_msg = (
+            f"📦 导入完成！\n"
+            f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒\n"
+            f"🆕 新增记录: {report['imported']}\n"
+            f"⏩ 跳过记录: {report['skipped']}\n"
+            f"⚠️ 无效文件: {report['invalid']}\n"
+            f"❌ 处理错误: {report['errors']}"
+        )
+        await update.message.reply_text(result_msg)
+    except Exception as e:
+        await update.message.reply_text(f"❌ 导入失败：{str(e)}")
 
 async def post_init(application: Application):
     commands = [
         BotCommand("delete", "删除指定ID的记录"),
         BotCommand("clear", "清空数据库记录"),
-        BotCommand("restore", "恢复所有STRM文件")
+        BotCommand("restore", "恢复STRM文件到本地"),
+        BotCommand("import", "导入STRM文件到数据库")
     ]
     await application.bot.set_my_commands(commands)
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
@@ -382,10 +488,11 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler("cancel", cancel_clear)],
     )
     
-    app.add_handler(CommandHandler("restore", handle_restore))  # 新增
+    app.add_handler(CommandHandler("restore", handle_restore))
+    app.add_handler(CommandHandler("import", handle_import))
     app.add_handler(conv_handler)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CommandHandler("delete", handle_delete))
     
-    print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
+    print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
     app.run_polling()
