@@ -29,10 +29,10 @@ class Config:
     BASE_URL = os.getenv("BASE_URL", "")     
     PROXY_URL = os.getenv("PROXY_URL", "")   
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
+    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
-    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
 
 def init_db():
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -367,6 +367,7 @@ if __name__ == "__main__":
             .proxy(Config.PROXY_URL)
             .get_updates_proxy(Config.PROXY_URL)
         )
+        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
     
     app = builder.build()
     
@@ -386,5 +387,5 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CommandHandler("delete", handle_delete))
     
-    print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH}")
+    print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
     app.run_polling()
