@@ -30,7 +30,7 @@ class Config:
     PROXY_URL = os.getenv("PROXY_URL", "")   
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
-    VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
+    VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
 
@@ -325,25 +325,29 @@ def format_duplicate_ids(ids):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
-    pattern = r'(https?://[^\s/]+/s/)([\w-]+)[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4})'
+    
+    # 修改后的正则表达式，支持可选提取码
+    pattern = r'(https?://[^\s/]+/s/)([\w-]+)(?:[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4}))?'
     
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
-        await update.message.reply_text("❌ 链接格式错误！示例：\nhttps://xxx.xxx/s/xxxxxx 提取码：1234")
+        await update.message.reply_text("❌ 123网盘分享链接格式错误")
         return
     
     domain = urlparse(match.group(1)).netloc
     share_key = match.group(2)
+    share_pwd = match.group(3) or ""  # 处理无提取码情况
+
     await update.message.reply_text(f"🔄 开始生成 {share_key} 的STRM...")
 
     try:
         start_time = datetime.now()
-        report = generate_strm_files(domain, match.group(2), match.group(3))
+        report = generate_strm_files(domain, share_key, share_pwd)
         id_ranges = format_duplicate_ids(report['skipped_ids'])
         
         result_msg = (
             f"✅ 处理完成！\n"
             f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒\n"
-            f"🎬 新视频: {report['video']} | 📝 字幕: {report['subtitle']}\n"
+            f"🎬 视频: {report['video']} | 📝 字幕: {report['subtitle']}\n"
             f"⏩ 跳过重复: {report['skipped']} | 重复ID: {id_ranges}"
         )
         if report['invalid']:
