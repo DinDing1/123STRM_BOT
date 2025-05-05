@@ -252,7 +252,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_msg = (
             f"✅ 处理完成！\n"
             f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒\n"
-            f"🎬 新视频: {report['video']} | 📝 字幕: {report['subtitle']}\n"
+            f"🎬 新视频: {report['video']} \n"
+            f"📝 字幕: {report['subtitle']}\n"
             f"⏩ 跳过重复: {report['skipped']} | 重复ID: {id_ranges}"
         )
         if report['invalid']:
