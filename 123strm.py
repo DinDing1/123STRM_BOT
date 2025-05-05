@@ -327,7 +327,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     
     # 修改后的正则表达式，支持可选提取码
-    pattern = r'(https?://[^\s/]+/s/)([\w-]+)(?:[^\u4e00-\u9fa5]*(?:提取码|密码|code)[\s:：=]*(\w{4}))?'
+    pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'
     
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
         await update.message.reply_text("❌ 123网盘分享链接格式错误")
@@ -340,6 +340,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔄 开始生成 {share_key} 的STRM...")
 
     try:
+        # 新增分享码格式校验
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', share_key):
+            raise ValueError(f"无效分享码格式：{share_key}")
+            
         start_time = datetime.now()
         report = generate_strm_files(domain, share_key, share_pwd)
         id_ranges = format_duplicate_ids(report['skipped_ids'])
