@@ -32,7 +32,7 @@ class Config:
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
-    DB_PATH = os.getenv("DB_PATH", "strm_records.db")
+    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
 
 def init_db():
     with sqlite3.connect(Config.DB_PATH) as conn:
