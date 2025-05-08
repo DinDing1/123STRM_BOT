@@ -538,8 +538,8 @@ if __name__ == "__main__":
     # 创建自定义请求配置
     request = HTTPXRequest(
         connection_pool_size=20,
-        connect_timeout=60.0,
-        read_timeout=60.0,
+        connect_timeout=180.0,
+        read_timeout=180.0,
         proxy=Config.PROXY_URL if Config.PROXY_URL else None
     )
     
