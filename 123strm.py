@@ -17,6 +17,7 @@ from telegram.ext import (
 )
 from urllib.parse import unquote, urlparse
 from pathlib import Path
+from telegram.request import HTTPXRequest
 
 # 初始化colorama
 init(autoreset=True)
@@ -63,7 +64,6 @@ def check_exists(file_size, md5, s3_key_flag):
 
 def add_record(file_name, file_size, md5, s3_key_flag, strm_path):
     with sqlite3.connect(Config.DB_PATH) as conn:
-        # 检查是否存在软删除记录
         cursor = conn.execute('''SELECT id FROM strm_records 
                                WHERE strm_path=? AND status=0''',
                             (strm_path,))
@@ -79,11 +79,49 @@ def add_record(file_name, file_size, md5, s3_key_flag, strm_path):
                        (file_name, file_size, md5, s3_key_flag, strm_path))
         conn.commit()
 
-def delete_record(record_id):
+def delete_records(record_ids):
+    """批量删除记录"""
     with sqlite3.connect(Config.DB_PATH) as conn:
-        conn.execute("UPDATE strm_records SET status=0 WHERE id=?", (record_id,))
-        conn.commit()
-        return conn.total_changes > 0
+        try:
+            placeholders = ','.join(['?'] * len(record_ids))
+            cursor = conn.execute(
+                f"UPDATE strm_records SET status=0 WHERE id IN ({placeholders})",
+                record_ids
+            )
+            conn.commit()
+            return cursor.rowcount
+        except sqlite3.Error as e:
+            print(f"数据库错误: {str(e)}")
+            return 0
+
+def get_deleted_ids(attempted_ids):
+    """查询实际被删除的有效ID"""
+    with sqlite3.connect(Config.DB_PATH) as conn:
+        placeholders = ','.join(['?'] * len(attempted_ids))
+        cursor = conn.execute(
+            f"SELECT id FROM strm_records WHERE id IN ({placeholders}) AND status=0",
+            attempted_ids
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+def format_ids(ids):
+    """格式化ID显示（超过10个用区间表示）"""
+    if len(ids) <= 10:
+        return ', '.join(map(str, sorted(ids)))
+    
+    sorted_ids = sorted(ids)
+    ranges = []
+    start = end = sorted_ids[0]
+    
+    for current_id in sorted_ids[1:]:
+        if current_id == end + 1:
+            end = current_id
+        else:
+            ranges.append(f"{start}-{end}" if start != end else str(start))
+            start = end = current_id
+    ranges.append(f"{start}-{end}" if start != end else str(start))
+    
+    return ' '.join(ranges)
 
 def clear_database():
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -97,7 +135,6 @@ def get_all_records():
         return cursor.fetchall()
 
 def parse_strm_content(content):
-    """解析STRM文件内容"""
     try:
         uri = content.strip()
         if not uri.startswith(("http://", "https://")):
@@ -107,15 +144,12 @@ def parse_strm_content(content):
         path_part = parsed.path.lstrip('/')
         query_part = parsed.query
         
-        # 分割路径部分
         name_part, size_str, md5 = path_part.rsplit("|", 2)
         file_size = int(size_str)
         
-        # 验证MD5有效性
         if len(md5) != 32 or not all(c in "0123456789abcdef" for c in md5):
             raise ValueError("Invalid MD5 hash")
         
-        # 获取s3_key_flag
         s3_key_flag = query_part.split("&")[0] if query_part else ""
         
         return {
@@ -144,26 +178,21 @@ def import_strm_files():
             
             strm_path = os.path.abspath(os.path.join(root, filename))
             try:
-                # 读取STRM文件内容
                 with open(strm_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 
-                # 解析内容
                 data = parse_strm_content(content)
                 
-                # 有效性检查
                 if data['file_size'] <= 0 or not data['s3_key_flag']:
                     counts['invalid'] += 1
                     print(f"{Fore.RED}⚠️ 无效记录：{strm_path}")
                     continue
                 
-                # 检查数据库是否存在
                 if check_exists(data['file_size'], data['md5'], data['s3_key_flag']):
                     counts['skipped'] += 1
                     print(f"{Fore.CYAN}⏩ 跳过已存在记录：{strm_path}")
                     continue
                 
-                # 插入数据库
                 try:
                     add_record(
                         file_name=data['name'],
@@ -236,17 +265,14 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
                         print(f"{Fore.RED}⚠️ 无效文件记录：{relpath}")
                         continue
 
-                    # 生成绝对路径
                     strm_path = os.path.abspath(os.path.splitext(output_path)[0] + '.strm')
 
-                    # 检查有效记录
                     if existing := check_exists(file_size, md5, s3_key_flag):
                         counts['skipped'] += 1
                         counts['skipped_ids'].append(existing[0])
                         print(f"{Fore.CYAN}⏩ 跳过重复文件 [ID:{existing[0]}]: {relpath}")
                         continue
 
-                    # 写入文件并添加记录
                     with open(strm_path, 'w', encoding='utf-8') as f:
                         f.write(f"{Config.BASE_URL}/{name_part}|{file_size}|{md5}?{s3_key_flag}")
                     
@@ -326,7 +352,6 @@ def format_duplicate_ids(ids):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     
-    # 修改后的正则表达式，支持可选提取码
     pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'
     
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
@@ -335,12 +360,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     domain = urlparse(match.group(1)).netloc
     share_key = match.group(2)
-    share_pwd = match.group(3) or ""  # 处理无提取码情况
+    share_pwd = match.group(3) or ""
 
     await update.message.reply_text(f"🔄 开始生成 {share_key} 的STRM...")
 
     try:
-        # 新增分享码格式校验
         if not re.match(r'^[a-zA-Z0-9\-_]+$', share_key):
             raise ValueError(f"无效分享码格式：{share_key}")
             
@@ -364,14 +388,60 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ 处理失败：{str(e)}")
 
 async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        record_id = int(context.args[0])
-        if delete_record(record_id):
-            await update.message.reply_text(f"✅ 记录 {record_id} 已删除")
+    """处理删除命令，支持批量ID和区间"""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ 用法示例：\n"
+            "单个ID：/delete 664\n"
+            "多个ID：/delete 664 665 667\n"
+            "区间ID：/delete 664-670\n"
+            "混合模式：/delete 664-670 675 680-685"
+        )
+        return
+
+    raw_ids = []
+    for arg in context.args:
+        if '-' in arg:
+            try:
+                start, end = sorted(map(int, arg.split('-')))
+                raw_ids.extend(range(start, end + 1))
+            except:
+                await update.message.reply_text(f"❌ 无效区间格式：{arg}")
+                return
         else:
-            await update.message.reply_text("❌ 未找到该记录")
-    except (IndexError, ValueError):
-        await update.message.reply_text("❌ 用法：/delete [记录ID]")
+            try:
+                raw_ids.append(int(arg))
+            except:
+                await update.message.reply_text(f"❌ 无效ID格式：{arg}")
+                return
+
+    unique_ids = list({x for x in raw_ids if x > 0})
+    if not unique_ids:
+        await update.message.reply_text("⚠️ 未提供有效ID")
+        return
+
+    try:
+        deleted_count = delete_records(unique_ids)
+        failed_count = len(unique_ids) - deleted_count
+        
+        result = [
+            f"🗑️ 请求删除：{len(unique_ids)} 个记录",
+            f"✅ 成功删除：{deleted_count} 个",
+            f"❌ 未找到记录：{failed_count} 个"
+        ]
+        
+        if deleted_count > 0:
+            success_ids = get_deleted_ids(unique_ids)
+            result.append(f"成功ID：{format_ids(success_ids)}")
+            
+        if failed_count > 0:
+            failed_ids = list(set(unique_ids) - set(success_ids))
+            result.append(f"失败ID：{format_ids(failed_ids)}")
+
+        await update.message.reply_text('\n'.join(result))
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ 删除操作异常：{str(e)}")
 
 async def handle_clear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -396,11 +466,10 @@ async def cancel_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理恢复指令"""
     try:
         success = 0
         failed = 0
-        records = get_all_records()  # 确保获取有效记录
+        records = get_all_records()
         
         if not records:
             await update.message.reply_text("⚠️ 数据库中没有可恢复的记录")
@@ -410,14 +479,12 @@ async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for record in records:
             try:
-                strm_path = Path(record[5])  # 第6列是strm_path
+                strm_path = Path(record[5])
                 uri = f"{Config.BASE_URL}/{record[1]}|{record[2]}|{record[3]}?{record[4]}"
                 
-                # 如果文件已存在则跳过
                 if strm_path.exists():
                     continue
                 
-                # 创建目录并写入文件
                 strm_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(strm_path, 'w') as f:
                     f.write(uri)
@@ -438,7 +505,6 @@ async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ 恢复失败：{str(e)}")
 
 async def handle_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理导入指令"""
     try:
         start_time = datetime.now()
         report = import_strm_files()
@@ -469,18 +535,24 @@ if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
     
+    # 创建自定义请求配置
+    request = HTTPXRequest(
+        connection_pool_size=20,
+        connect_timeout=60.0,
+        read_timeout=60.0,
+        proxy=Config.PROXY_URL if Config.PROXY_URL else None
+    )
+    
     builder = (
         Application.builder()
         .token(Config.TG_TOKEN)
         .post_init(post_init)
+        .get_updates_request(request)
+        .connect_timeout(60.0)
+        .read_timeout(60.0)
     )
     
     if Config.PROXY_URL:
-        builder = (
-            builder
-            .proxy(Config.PROXY_URL)
-            .get_updates_proxy(Config.PROXY_URL)
-        )
         print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
     
     app = builder.build()
