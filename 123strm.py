@@ -19,12 +19,13 @@ from urllib.parse import unquote, urlparse
 from pathlib import Path
 from telegram.request import HTTPXRequest
 
-# 初始化colorama
+# 初始化colorama（控制台彩色输出）
 init(autoreset=True)
 
 # 对话状态
 CONFIRM_CLEAR = 1
 
+# ========================= 全局配置 =========================
 class Config:
     TG_TOKEN = os.getenv("TG_TOKEN", "")     
     USER_ID = int(os.getenv("USER_ID", ""))  # 授权用户ID
@@ -35,7 +36,7 @@ class Config:
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
-
+# ========================= 权限控制装饰器 =========================
 # 权限验证装饰器（静默模式）
 def restricted(func):
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,7 +45,7 @@ def restricted(func):
             return  # 未授权用户，直接返回，不进行任何响应
         return await func(update, context)
     return wrapped
-
+# ========================= 数据库操作 =========================
 def init_db():
     with sqlite3.connect(Config.DB_PATH) as conn:
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='strm_records'")
@@ -88,7 +89,7 @@ def add_record(file_name, file_size, md5, s3_key_flag, strm_path):
                           VALUES (?, ?, ?, ?, ?)''',
                        (file_name, file_size, md5, s3_key_flag, strm_path))
         conn.commit()
-
+# ========================= 核心功能 =========================
 def delete_records(record_ids):
     """批量删除记录"""
     with sqlite3.connect(Config.DB_PATH) as conn:
