@@ -27,15 +27,15 @@ CONFIRM_CLEAR = 1
 
 # ========================= 全局配置 =========================
 class Config:
-    TG_TOKEN = os.getenv("TG_TOKEN", "")     
+    TG_TOKEN = os.getenv("TG_TOKEN", "")     # Telegram机器人令牌
     USER_ID = int(os.getenv("USER_ID", ""))  # 授权用户ID
-    BASE_URL = os.getenv("BASE_URL", "")    
-    PROXY_URL = os.getenv("PROXY_URL", "")   
-    OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
-    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
+    BASE_URL = os.getenv("BASE_URL", "")    # STRM文件指向的基础URL
+    PROXY_URL = os.getenv("PROXY_URL", "")   # 代理地址（可选）
+    OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")# STRM文件输出目录
+    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db") # 数据库文件路径
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
-    SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
-    MAX_DEPTH = -1
+    SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt') # 支持的字幕扩展名
+    MAX_DEPTH = -1 # 目录遍历深度限制（-1表示无限制）
 # ========================= 权限控制装饰器 =========================
 # 权限验证装饰器（静默模式）
 def restricted(func):
