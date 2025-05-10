@@ -27,13 +27,23 @@ CONFIRM_CLEAR = 1
 
 class Config:
     TG_TOKEN = os.getenv("TG_TOKEN", "")     
-    BASE_URL = os.getenv("BASE_URL", "")     
+    USER_ID = int(os.getenv("USER_ID", ""))  # 授权用户ID
+    BASE_URL = os.getenv("BASE_URL", "")    
     PROXY_URL = os.getenv("PROXY_URL", "")   
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
+
+# 权限验证装饰器（静默模式）
+def restricted(func):
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        if user_id != Config.USER_ID:
+            return  # 未授权用户，直接返回，不进行任何响应
+        return await func(update, context)
+    return wrapped
 
 def init_db():
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -349,6 +359,7 @@ def format_duplicate_ids(ids):
     
     return ' '.join(merged_ranges) if merged_ranges else "无"
 
+@restricted
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     
@@ -387,6 +398,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ 处理失败：{str(e)}")
 
+@restricted
 async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理删除命令，支持批量ID和区间"""
     if not context.args:
@@ -443,6 +455,7 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ 删除操作异常：{str(e)}")
 
+@restricted
 async def handle_clear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚠️ 确认要清空所有数据库记录吗？此操作不可恢复！\n"
@@ -450,6 +463,7 @@ async def handle_clear_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     return CONFIRM_CLEAR
 
+@restricted
 async def handle_clear_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == '确认清空':
@@ -461,10 +475,12 @@ async def handle_clear_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ 已取消清空操作")
     return ConversationHandler.END
 
+@restricted
 async def cancel_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ 已取消清空操作")
     return ConversationHandler.END
 
+@restricted
 async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         success = 0
@@ -504,6 +520,7 @@ async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ 恢复失败：{str(e)}")
 
+@restricted
 async def handle_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         start_time = datetime.now()
