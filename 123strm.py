@@ -329,6 +329,8 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
     
     return counts
 
+# ========================= Telegram处理器 =========================
+
 def format_duplicate_ids(ids):
     if not ids:
         return "无"
@@ -549,6 +551,7 @@ async def post_init(application: Application):
     await application.bot.set_my_commands(commands)
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
 
+# ========================= 主程序入口 =========================
 if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
