@@ -364,6 +364,7 @@ def format_duplicate_ids(ids):
 
 @restricted
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理123网盘链接"""
     msg = update.message.text
     # 匹配分享链接格式
     pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'    
