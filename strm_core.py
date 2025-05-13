@@ -35,15 +35,16 @@ class Config:
 
 # ========================= 新增适配器接口 =========================
 def load_adapters():
-    """动态加载所有适配器（修复线程事件循环）"""
+    """动态加载所有适配器（修复线程冲突）"""
     adapters = [a.strip() for a in Config.ADAPTER.split(",") if a.strip()]
     
+    threads = []
     for adapter in adapters:
         try:
             module = importlib.import_module(adapter)
             start_func = getattr(module, "start_adapter")
             
-            # 为每个适配器创建独立线程和事件循环
+            # 为每个适配器创建独立线程
             def adapter_runner():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -51,10 +52,14 @@ def load_adapters():
             
             t = threading.Thread(target=adapter_runner, daemon=False)
             t.start()
+            threads.append(t)
             print(f"🚀 加载 {adapter} 适配器")
-            
         except Exception as e:
             print(f"❌ 适配器 {adapter} 加载失败: {str(e)}")
+    
+    # 保持主线程存活
+    for t in threads:
+        t.join()
 
 
 # ========================= 新增工具函数 =========================
