@@ -599,5 +599,5 @@ if __name__ == "__main__":
     handle_message
 ))
     
-    print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
+    #print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
     app.run_polling()
