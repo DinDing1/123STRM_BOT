@@ -19,13 +19,13 @@ init(autoreset=True)
 
 # ========================= 全局配置 =========================
 class Config:
-    TG_TOKEN = os.getenv("TG_TOKEN", "5509161323:AAGHMXmRX1uVEQVUd8mFzU3w7wennXwYClQ")
-    USER_ID = int(os.getenv("USER_ID", "1817565003"))
+    TG_TOKEN = os.getenv("TG_TOKEN", "")
+    USER_ID = int(os.getenv("USER_ID", ""))
     ADAPTER = os.getenv("ADAPTER", "telegram_bot,telegram_client")  # 修改为逗号分隔多个适配器
-    ADMINS = list(map(int, os.getenv("ADMINS", "1817565003").split(",")))  # 管理员列表
-    BASE_URL = os.getenv("BASE_URL", "http://10.10.10.11:8123")
-    TG_API_ID = os.getenv("TG_API_ID", "6483014")
-    TG_API_HASH = os.getenv("TG_API_HASH", "ca4cfd7c71ae4ae77bb4ccd3ffb4c53c")
+    ADMINS = list(map(int, os.getenv("ADMINS", "").split(",")))  # 管理员列表
+    BASE_URL = os.getenv("BASE_URL", "")
+    TG_API_ID = os.getenv("TG_API_ID", "")
+    TG_API_HASH = os.getenv("TG_API_HASH", "")
     TG_SESSION = os.getenv("TG_SESSION", "strm_client")
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
