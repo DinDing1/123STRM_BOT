@@ -587,12 +587,17 @@ if __name__ == "__main__":
         },
         fallbacks=[CommandHandler("cancel", cancel_clear)],
     )
-    
+    # 注册所有处理器    
+    app.add_handler(CommandHandler("delete", handle_delete))
     app.add_handler(CommandHandler("restore", handle_restore))
     app.add_handler(CommandHandler("import", handle_import))
     app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CommandHandler("delete", handle_delete))
+        app.add_handler(MessageHandler(
+    filters.TEXT & 
+    ~filters.COMMAND & 
+    filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
+    handle_message
+))
     
     print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
     app.run_polling()
