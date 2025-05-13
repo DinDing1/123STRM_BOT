@@ -211,9 +211,7 @@ async def handle_import_command(event):
 
 # ========================= 初始化函数 =========================
 def start_adapter():
-    """Telethon适配器启动入口"""
-    import asyncio
-    
+    """Telethon适配器入口（线程安全版）"""
     # 创建新事件循环
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -224,15 +222,6 @@ def start_adapter():
         int(Config.TG_API_ID),
         Config.TG_API_HASH,
         loop=loop
-    )
-    """Telethon适配器启动入口"""
-    init_db()
-    os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
-    
-    client = TelegramClient(
-        Config.TG_SESSION,
-        int(Config.TG_API_ID),
-        Config.TG_API_HASH
     )
     
     # 命令处理器注册
