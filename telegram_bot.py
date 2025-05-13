@@ -232,8 +232,8 @@ async def post_init(application: Application):
 
 # ========================= 初始化函数 =========================
 def start_adapter():
-    """Telegram Bot适配器启动入口（修复事件循环版本）"""
-    # 创建新事件循环
+    """Telegram Bot适配器入口（线程安全版）"""
+    # 创建新事件循环（避免与主线程冲突）
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -241,14 +241,13 @@ def start_adapter():
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
     
-    # 新版PTB配置
+    # 构建应用
     request = HTTPXRequest(
         connection_pool_size=20,
         connect_timeout=180.0,
         read_timeout=180.0,
     )
     
-    # 构建应用
     builder = (
         Application.builder()
         .token(Config.TG_TOKEN)
@@ -280,8 +279,6 @@ def start_adapter():
     filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
     handle_message
 ))
-    
-    #print(f"{Fore.GREEN}🤖 Telegram机器人已启动 | 数据库：{Config.DB_PATH}")
     
     try:
         print(f"{Fore.GREEN}🤖 Telegram机器人已启动")
