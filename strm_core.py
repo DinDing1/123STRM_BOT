@@ -26,7 +26,7 @@ class Config:
     BASE_URL = os.getenv("BASE_URL", "")
     TG_API_ID = os.getenv("TG_API_ID", "")
     TG_API_HASH = os.getenv("TG_API_HASH", "")
-    TG_SESSION = os.getenv("TG_SESSION", "strm_client")
+    TG_SESSION = os.getenv("TG_SESSION", "/app/data/strm_client")
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
