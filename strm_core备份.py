@@ -365,11 +365,9 @@ def format_duplicate_ids(ids):
 @restricted
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
-    
-    pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'
-    
+    # 匹配分享链接格式
+    pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'    
     if not (match := re.search(pattern, msg, re.IGNORECASE)):
-        await update.message.reply_text("❌ 123网盘分享链接格式错误")
         return
     
     domain = urlparse(match.group(1)).netloc
