@@ -592,7 +592,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("restore", handle_restore))
     app.add_handler(CommandHandler("import", handle_import))
     app.add_handler(conv_handler)
-        app.add_handler(MessageHandler(
+    app.add_handler(MessageHandler(
     filters.TEXT & 
     ~filters.COMMAND & 
     filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
