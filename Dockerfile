@@ -30,7 +30,7 @@ RUN mkdir -p /app/{data,config,strm_output} && \
 COPY --from=builder /root/.local /root/.local
 
 # 复制必要文件
-COPY auth_check.sh entrypoint.sh strm_core.py direct_link_service.py VERSION ./
+COPY auth_check.sh entrypoint.sh strm_core.py telegram_bot.py telegram_client.py direct_link_service.py VERSION ./
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 
 # 设置权限
