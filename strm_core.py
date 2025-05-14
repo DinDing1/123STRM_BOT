@@ -21,6 +21,8 @@ from pathlib import Path
 from telegram.request import HTTPXRequest
 from telethon import TelegramClient, events #新增依赖
 from typing import Union, List #新增依赖
+from telethon.sessions import StringSession
+from telethon.network import ConnectionHttpProxy
 
 # 初始化colorama
 init(autoreset=True)
