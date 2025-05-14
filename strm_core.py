@@ -687,21 +687,27 @@ async def start_bot():
             print(f"{Fore.RED}⚠️ Bot关闭异常: {str(e)}")
 
 #初始化Telethon客户端
-proxy_config = get_dynamic_proxy()
-
 async def start_user_client():
     """独立运行用户客户端"""
+    # 动态获取代理配置
+    proxy_config = get_dynamic_proxy()
+
+    # 初始化Telethon客户端
     client = TelegramClient(
         Config.TG_SESSION,
         Config.TG_API_ID,
         Config.TG_API_HASH,
-        proxy=proxy_config,  # 自动适配代理或直连
-        connection_retries=5,  # 增加重试次数
-        timeout=30,            # 延长超时时间
-        device_model="123STRM_BOT",  # 自定义设备标识
+        proxy=proxy_config,
+        connection_retries=5,
+        timeout=30,
+        device_model="123STRM_BOT",
         app_version="123云盘STRM"
     )
-    
+
+    # 注册事件处理器（以下两条经针对客户端http代理）
+    client.add_event_handler(user_message_handler, events.NewMessage(...))
+    client.add_event_handler(user_command_handler, events.NewMessage(...))
+
     client.add_event_handler(
         user_message_handler,
         events.NewMessage(
