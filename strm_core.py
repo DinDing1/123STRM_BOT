@@ -653,11 +653,13 @@ async def start_bot():
 async def start_user_client():
     """独立运行用户客户端"""
     client = TelegramClient(
-        os.path.join("telethon_sessions", Config.TG_SESSION),  # 指定会话目录
+        Config.TG_SESSION,
         Config.TG_API_ID,
         Config.TG_API_HASH,
         connection_retries=5,  # 增加重试次数
-        timeout=30            # 延长超时时间
+        timeout=30,            # 延长超时时间
+        device_model="123STRM_BOT",  # 自定义设备标识
+        app_version="123云盘STRM"
     )
     
     client.add_event_handler(
