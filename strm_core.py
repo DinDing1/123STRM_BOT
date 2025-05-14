@@ -31,14 +31,14 @@ CONFIRM_CLEAR = 1
 # ========================= 全局配置 =========================
 class Config:
     # Bot配置
-    TG_TOKEN = os.getenv("TG_TOKEN", "5509161323:AAGHMXmRX1uVEQVUd8mFzU3w7wennXwYClQ")
-    USER_ID = int(os.getenv("USER_ID", "1817565003"))
+    TG_TOKEN = os.getenv("TG_TOKEN", "")
+    USER_ID = int(os.getenv("USER_ID", ""))
     
     # 用户模式配置
-    TG_API_ID = os.getenv("TG_API_ID", "6483014")
-    TG_API_HASH = os.getenv("TG_API_HASH", "ca4cfd7c71ae4ae77bb4ccd3ffb4c53c")
-    TG_SESSION = os.getenv("TG_SESSION", "userbot")
-    ADMINS = list(map(int, os.getenv("ADMINS", "1817565003 13554540004").split()))  # 添加您的号码ID
+    TG_API_ID = os.getenv("TG_API_ID", "")
+    TG_API_HASH = os.getenv("TG_API_HASH", "")
+    TG_SESSION = os.getenv("TG_SESSION", "/app/data/userbot")
+    ADMINS = list(map(int, os.getenv("ADMINS", "").split()))  # 添加您的号码ID
     
     # 通用配置
     BASE_URL = os.getenv("BASE_URL", "http://10.10.10.11:8123")
