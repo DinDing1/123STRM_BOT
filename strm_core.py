@@ -37,7 +37,7 @@ class Config:
     # 用户模式配置
     TG_API_ID = os.getenv("TG_API_ID", "")
     TG_API_HASH = os.getenv("TG_API_HASH", "")
-    TG_SESSION = os.getenv("TG_SESSION", "/app/data/userbot")
+    TG_SESSION = os.getenv("TG_SESSION", "/app/data/userbot.session")
     ADMINS = list(map(int, os.getenv("ADMINS", "").split()))  # 添加您的号码ID
     
     # 通用配置
