@@ -41,7 +41,7 @@ class Config:
     ADMINS = list(map(int, os.getenv("ADMINS", "").split()))  # 添加您的号码ID
     
     # 通用配置
-    BASE_URL = os.getenv("BASE_URL", "http://10.10.10.11:8123")
+    BASE_URL = os.getenv("BASE_URL", "")
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
     DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
