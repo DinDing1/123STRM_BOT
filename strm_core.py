@@ -49,41 +49,6 @@ class Config:
     SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
     MAX_DEPTH = -1
 
-# ========================= TG客户端机器人转移代理（因不能使用容器代理，所以提取容器代理） =========================
-def get_dynamic_proxy():
-    """从环境变量中提取HTTP代理配置（支持任意端口和认证）"""
-    proxy_url = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
-    if not proxy_url:
-        return None
-
-    try:
-        parsed = urlparse(proxy_url)
-        if parsed.scheme not in ("http", "https"):
-            print(f"⚠️ 仅支持HTTP/HTTPS代理，当前协议: {parsed.scheme}")
-            return None
-
-        # 提取主机和端口（无默认值，完全动态）
-        host = parsed.hostname
-        port = parsed.port  # 如果未指定则为None
-
-        # 必须明确指定端口，否则抛出错误
-        if not port:
-            raise ValueError("代理URL中必须包含端口号（如 http://host:port）")
-
-        # 提取认证信息
-        username = parsed.username
-        password = parsed.password
-
-        # 构造Telethon代理元组
-        proxy_params = ("http", host, port)
-        if username and password:
-            proxy_params += (username, password)
-
-        return proxy_params
-    except Exception as e:
-        print(f"❌ 代理配置解析失败: {str(e)}")
-        return None
-
 # ========================= 数据库操作 =========================
 def init_db():
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -688,25 +653,16 @@ async def start_bot():
 
 #初始化Telethon客户端
 async def start_user_client():
-    """独立运行用户客户端"""
-    # 动态获取代理配置
-    proxy_config = get_dynamic_proxy()
-
     # 初始化Telethon客户端
     client = TelegramClient(
         Config.TG_SESSION,
         Config.TG_API_ID,
         Config.TG_API_HASH,
-        proxy=proxy_config,
         connection_retries=5,
         timeout=30,
         device_model="123STRM_BOT",
         app_version="123云盘STRM"
     )
-
-    # 注册事件处理器（以下两条经针对客户端http代理）
-    client.add_event_handler(user_message_handler, events.NewMessage(...))
-    client.add_event_handler(user_command_handler, events.NewMessage(...))
 
     client.add_event_handler(
         user_message_handler,
