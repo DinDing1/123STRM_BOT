@@ -3,6 +3,7 @@ import re
 import sqlite3
 import requests
 import hashlib
+import asyncio #新增依赖
 from p123.tool import share_iterdir
 from datetime import datetime
 from colorama import init, Fore, Style
@@ -18,8 +19,10 @@ from telegram.ext import (
 from urllib.parse import unquote, urlparse
 from pathlib import Path
 from telegram.request import HTTPXRequest
+from telethon import TelegramClient, events #新增依赖
+from typing import Union, List #新增依赖
 
-# 初始化colorama（控制台彩色输出）
+# 初始化colorama
 init(autoreset=True)
 
 # 对话状态
@@ -27,24 +30,24 @@ CONFIRM_CLEAR = 1
 
 # ========================= 全局配置 =========================
 class Config:
-    TG_TOKEN = os.getenv("TG_TOKEN", "")     # Telegram机器人令牌
-    USER_ID = int(os.getenv("USER_ID", ""))  # 授权用户ID
-    BASE_URL = os.getenv("BASE_URL", "")    # STRM文件指向的基础URL
-    PROXY_URL = os.getenv("PROXY_URL", "")   # 代理地址（可选）
-    OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")# STRM文件输出目录
-    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db") # 数据库文件路径
+    # Bot配置
+    TG_TOKEN = os.getenv("TG_TOKEN", "5509161323:AAGHMXmRX1uVEQVUd8mFzU3w7wennXwYClQ")
+    USER_ID = int(os.getenv("USER_ID", "1817565003"))
+    
+    # 用户模式配置
+    TG_API_ID = os.getenv("TG_API_ID", "6483014")
+    TG_API_HASH = os.getenv("TG_API_HASH", "ca4cfd7c71ae4ae77bb4ccd3ffb4c53c")
+    TG_SESSION = os.getenv("TG_SESSION", "userbot")
+    ADMINS = list(map(int, os.getenv("ADMINS", "1817565003 13554540004").split()))  # 添加您的号码ID
+    
+    # 通用配置
+    BASE_URL = os.getenv("BASE_URL", "http://10.10.10.11:8123")
+    OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")
+    DB_PATH = os.getenv("DB_PATH", "/app/data/strm_records.db")
     VIDEO_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.flv', '.ts', '.iso', '.rmvb', '.m2ts', '.mp3', '.flac')
-    SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt') # 支持的字幕扩展名
-    MAX_DEPTH = -1 # 目录遍历深度限制（-1表示无限制）
-# ========================= 权限控制装饰器 =========================
-# 权限验证装饰器（静默模式）
-def restricted(func):
-    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        if user_id != Config.USER_ID:
-            return  # 未授权用户，直接返回，不进行任何响应
-        return await func(update, context)
-    return wrapped
+    SUBTITLE_EXTENSIONS = ('.srt', '.ass', '.sub', '.ssa', '.vtt')
+    MAX_DEPTH = -1
+
 # ========================= 数据库操作 =========================
 def init_db():
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -89,9 +92,9 @@ def add_record(file_name, file_size, md5, s3_key_flag, strm_path):
                           VALUES (?, ?, ?, ?, ?)''',
                        (file_name, file_size, md5, s3_key_flag, strm_path))
         conn.commit()
+
 # ========================= 核心功能 =========================
 def delete_records(record_ids):
-    """批量删除记录"""
     with sqlite3.connect(Config.DB_PATH) as conn:
         try:
             placeholders = ','.join(['?'] * len(record_ids))
@@ -106,7 +109,6 @@ def delete_records(record_ids):
             return 0
 
 def get_deleted_ids(attempted_ids):
-    """查询实际被删除的有效ID"""
     with sqlite3.connect(Config.DB_PATH) as conn:
         placeholders = ','.join(['?'] * len(attempted_ids))
         cursor = conn.execute(
@@ -116,7 +118,6 @@ def get_deleted_ids(attempted_ids):
         return [row[0] for row in cursor.fetchall()]
 
 def format_ids(ids):
-    """格式化ID显示（超过10个用区间表示）"""
     if len(ids) <= 10:
         return ', '.join(map(str, sorted(ids)))
     
@@ -329,17 +330,34 @@ def generate_strm_files(domain: str, share_key: str, share_pwd: str):
     
     return counts
 
-# ========================= Telegram处理器 =========================
+# ========================= 权限控制装饰器 =========================
+def restricted(func):
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        if user_id != Config.USER_ID:
+            return
+        return await func(update, context)
+    return wrapped
 
+def user_restricted(func):
+    async def wrapped(event):
+        user_id = event.sender_id
+        if user_id not in Config.ADMINS:
+            return
+        return await func(event)
+    return wrapped
+
+# ========================= 核心服务层 =========================
 def format_duplicate_ids(ids):
+    """格式化重复ID的显示（合并连续ID为区间）"""
     if not ids:
         return "无"
     
-    ids = sorted(set(ids))
+    sorted_ids = sorted(set(ids))
     ranges = []
-    start = end = ids[0]
+    start = end = sorted_ids[0]
     
-    for current in ids[1:]:
+    for current in sorted_ids[1:]:
         if current == end + 1:
             end = current
         else:
@@ -347,200 +365,234 @@ def format_duplicate_ids(ids):
             start = end = current
     ranges.append(f"{start}-{end}" if start != end else str(start))
     
-    merged_ranges = []
-    for r in ranges:
-        if '-' in r:
-            s, e = map(int, r.split('-'))
-            if merged_ranges and '-' in merged_ranges[-1]:
-                last_s, last_e = map(int, merged_ranges[-1].split('-'))
-                if last_e + 1 == s:
-                    merged_ranges[-1] = f"{last_s}-{e}"
-                    continue
-            merged_ranges.append(r)
-        else:
-            merged_ranges.append(r)
-    
-    return ' '.join(merged_ranges) if merged_ranges else "无"
+    return ' '.join(ranges) if ranges else "无"
 
-@restricted
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理123网盘链接"""
-    msg = update.message.text
-    # 匹配分享链接格式
-    pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'    
-    if not (match := re.search(pattern, msg, re.IGNORECASE)):
-        return
-    
-    domain = urlparse(match.group(1)).netloc
-    share_key = match.group(2)
-    share_pwd = match.group(3) or ""
+class CoreService:
+    @staticmethod
+    async def process_message(link: str) -> str:
+        pattern = r'(https?://[^\s/]+/s/)([a-zA-Z0-9\-_]+)(?:[\s\S]*?(?:提取码|密码|code)[\s:：=]*(\w{4}))?'
+        if not (match := re.search(pattern, link, re.IGNORECASE)):
+            return "❌ 无效的分享链接格式"
 
-    await update.message.reply_text(f"🔄 开始生成 {share_key} 的STRM...")
+        domain = urlparse(match.group(1)).netloc
+        share_key = match.group(2)
+        share_pwd = match.group(3) or ""
 
-    try:
-        if not re.match(r'^[a-zA-Z0-9\-_]+$', share_key):
-            raise ValueError(f"无效分享码格式：{share_key}")
+        try:
+            start_time = datetime.now()
+            report = generate_strm_files(domain, share_key, share_pwd)
+            id_ranges = format_duplicate_ids(report['skipped_ids'])
             
-        start_time = datetime.now()
-        report = generate_strm_files(domain, share_key, share_pwd)
-        id_ranges = format_duplicate_ids(report['skipped_ids'])
-        
-        result_msg = (
-            f"✅ 处理完成！\n"
-            f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒\n"
-            f"🎬 视频: {report['video']} | 📝 字幕: {report['subtitle']}\n"
-            f"⏩ 跳过重复: {report['skipped']} | 重复ID: {id_ranges}"
-        )
-        if report['invalid']:
-            result_msg += f"\n⚠️ 无效记录: {report['invalid']}个"
-        if report['error']:
-            result_msg += f"\n❌ 处理错误: {report['error']}个"
+            result = [
+                f"✅ 处理完成！",
+                f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒",
+                f"🎬 视频: {report['video']} | 📝 字幕: {report['subtitle']}",
+                f"⏩ 跳过: {report['skipped']} | 重复ID: {id_ranges}"
+            ]
+            if report['invalid']: result.append(f"⚠️ 无效记录: {report['invalid']}个")
+            if report['error']: result.append(f"❌ 错误: {report['error']}个")
             
-        await update.message.reply_text(result_msg)
-    except Exception as e:
-        await update.message.reply_text(f"❌ 处理失败：{str(e)}")
+            return '\n'.join(result)
+        except Exception as e:
+            return f"❌ 处理失败：{str(e)}"
 
-@restricted
-async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理删除命令，支持批量ID和区间"""
-    if not context.args:
-        await update.message.reply_text(
-            "❌ 用法示例：\n"
-            "单个ID：/delete 664\n"
-            "多个ID：/delete 664 665 667\n"
-            "区间ID：/delete 664-670\n"
-            "混合模式：/delete 664-670 675 680-685"
-        )
-        return
-
-    raw_ids = []
-    for arg in context.args:
-        if '-' in arg:
-            try:
-                start, end = sorted(map(int, arg.split('-')))
-                raw_ids.extend(range(start, end + 1))
-            except:
-                await update.message.reply_text(f"❌ 无效区间格式：{arg}")
-                return
-        else:
-            try:
-                raw_ids.append(int(arg))
-            except:
-                await update.message.reply_text(f"❌ 无效ID格式：{arg}")
-                return
-
-    unique_ids = list({x for x in raw_ids if x > 0})
-    if not unique_ids:
-        await update.message.reply_text("⚠️ 未提供有效ID")
-        return
-
-    try:
-        deleted_count = delete_records(unique_ids)
-        failed_count = len(unique_ids) - deleted_count
+    @staticmethod
+    def process_delete(ids: List[int]) -> dict:
+        deleted_count = delete_records(ids)
+        success_ids = get_deleted_ids(ids)
+        failed_ids = list(set(ids) - set(success_ids))
         
-        result = [
-            f"🗑️ 请求删除：{len(unique_ids)} 个记录",
-            f"✅ 成功删除：{deleted_count} 个",
-            f"❌ 未找到记录：{failed_count} 个"
-        ]
+        return {
+            'total': len(ids),
+            'success': deleted_count,
+            'failed': len(failed_ids),
+            'success_ids': success_ids,
+            'failed_ids': failed_ids
+        }
+
+    @staticmethod
+    def process_clear() -> bool:
+        return clear_database()
+
+    @staticmethod
+    def process_restore() -> dict:
+        records = get_all_records()
+        if not records:
+            return {'total': 0, 'success': 0, 'failed': 0}
         
-        if deleted_count > 0:
-            success_ids = get_deleted_ids(unique_ids)
-            result.append(f"成功ID：{format_ids(success_ids)}")
-            
-        if failed_count > 0:
-            failed_ids = list(set(unique_ids) - set(success_ids))
-            result.append(f"失败ID：{format_ids(failed_ids)}")
-
-        await update.message.reply_text('\n'.join(result))
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ 删除操作异常：{str(e)}")
-
-@restricted
-async def handle_clear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "⚠️ 确认要清空所有数据库记录吗？此操作不可恢复！\n"
-        "请回复'确认清空'继续操作，或回复任意内容取消"
-    )
-    return CONFIRM_CLEAR
-
-@restricted
-async def handle_clear_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text == '确认清空':
-        if clear_database():
-            await update.message.reply_text("✅ 数据库已成功清空")
-        else:
-            await update.message.reply_text("❌ 清空数据库失败")
-    else:
-        await update.message.reply_text("❌ 已取消清空操作")
-    return ConversationHandler.END
-
-@restricted
-async def cancel_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ 已取消清空操作")
-    return ConversationHandler.END
-
-@restricted
-async def handle_restore(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
         success = 0
         failed = 0
-        records = get_all_records()
-        
-        if not records:
-            await update.message.reply_text("⚠️ 数据库中没有可恢复的记录")
-            return
-
-        await update.message.reply_text(f"🔄 开始恢复 {len(records)} 个STRM文件...")
-        
         for record in records:
             try:
                 strm_path = Path(record[5])
-                uri = f"{Config.BASE_URL}/{record[1]}|{record[2]}|{record[3]}?{record[4]}"
-                
                 if strm_path.exists():
                     continue
-                
+                    
                 strm_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(strm_path, 'w') as f:
-                    f.write(uri)
+                    f.write(f"{Config.BASE_URL}/{record[1]}|{record[2]}|{record[3]}?{record[4]}")
                 success += 1
-                
-            except Exception as e:
-                print(f"恢复失败 ID:{record[0]} {str(e)}")
+            except:
                 failed += 1
+                
+        return {'total': len(records), 'success': success, 'failed': failed}
 
-        result_msg = (
-            f"✅ 恢复完成\n"
-            f"成功恢复: {success} 个\n"
-            f"恢复失败: {failed} 个"
-        )
-        await update.message.reply_text(result_msg)
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ 恢复失败：{str(e)}")
-
-@restricted
-async def handle_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
+    @staticmethod
+    def process_import() -> dict:
         start_time = datetime.now()
         report = import_strm_files()
-        
-        result_msg = (
-            f"📦 导入完成！\n"
-            f"⏱️ 耗时: {(datetime.now() - start_time).total_seconds():.1f}秒\n"
-            f"🆕 新增记录: {report['imported']}\n"
-            f"⏩ 跳过记录: {report['skipped']}\n"
-            f"⚠️ 无效文件: {report['invalid']}\n"
-            f"❌ 处理错误: {report['errors']}"
-        )
-        await update.message.reply_text(result_msg)
-    except Exception as e:
-        await update.message.reply_text(f"❌ 导入失败：{str(e)}")
+        return {
+            'time': (datetime.now() - start_time).total_seconds(),
+            **report
+        }
 
+# ========================= 接口适配层 =========================
+class BotAdapter:
+    """Telegram Bot适配器"""
+    @staticmethod
+    def restricted(func):
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if update.effective_user.id != Config.USER_ID:
+                return
+            return await func(update, context)
+        return wrapper
+
+    @staticmethod
+    async def send_reply(target: Union[Update, events.NewMessage], message: str):
+        """统一回复接口"""
+        if isinstance(target, Update):
+            await target.message.reply_text(message)
+        else:
+            await target.reply(message)
+
+    @classmethod
+    async def handle_delete(cls, target: Union[Update, events.NewMessage], args: list):
+        """删除命令适配"""
+        if not args:
+            await cls.send_reply(target, "❌ 参数错误！使用示例：/delete 123 456-789")
+            return
+
+        raw_ids = []
+        for arg in args:
+            if '-' in arg:
+                try:
+                    start, end = sorted(map(int, arg.split('-')))
+                    raw_ids.extend(range(start, end + 1))
+                except:
+                    await cls.send_reply(target, f"❌ 无效区间格式：{arg}")
+                    return
+            else:
+                try:
+                    raw_ids.append(int(arg))
+                except:
+                    await cls.send_reply(target, f"❌ 无效ID格式：{arg}")
+                    return
+
+        unique_ids = list({x for x in raw_ids if x > 0})
+        if not unique_ids:
+            await cls.send_reply(target, "⚠️ 未提供有效ID")
+            return
+
+        result = CoreService.process_delete(unique_ids)
+        response = [
+            f"🗑️ 请求删除：{result['total']}",
+            f"✅ 成功：{result['success']} | ❌ 失败：{result['failed']}"
+        ]
+        if result['success_ids']:
+            response.append(f"成功ID：{format_ids(result['success_ids'])}")
+        if result['failed_ids']:
+            response.append(f"失败ID：{format_ids(result['failed_ids'])}")
+            
+        await cls.send_reply(target, '\n'.join(response))
+
+    @classmethod
+    async def handle_clear(cls, target: Union[Update, events.NewMessage]):
+        """清空操作适配"""
+        if CoreService.process_clear():
+            await cls.send_reply(target, "✅ 数据库已清空")
+        else:
+            await cls.send_reply(target, "❌ 清空操作失败")
+
+    @classmethod
+    async def handle_restore(cls, target: Union[Update, events.NewMessage]):
+        """恢复操作适配"""
+        result = CoreService.process_restore()
+        await cls.send_reply(target, 
+            f"✅ 恢复完成\n成功: {result['success']} | 失败: {result['failed']}\n"
+            f"总记录: {result['total']}"
+        )
+
+    @classmethod
+    async def handle_import(cls, target: Union[Update, events.NewMessage]):
+        """导入操作适配"""
+        result = CoreService.process_import()
+        response = [
+            f"📦 导入完成！耗时: {result['time']:.1f}秒",
+            f"🆕 新增: {result['imported']} | ⏩ 跳过: {result['skipped']}",
+            f"⚠️ 无效: {result['invalid']} | ❌ 错误: {result['errors']}"
+        ]
+        await cls.send_reply(target, '\n'.join(response))
+
+# ================ Telegram Bot实现 ================
+@BotAdapter.restricted
+async def bot_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bot消息处理器"""
+    result = await CoreService.process_message(update.message.text)
+    await BotAdapter.send_reply(update, result)
+
+@BotAdapter.restricted
+async def bot_delete_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await BotAdapter.handle_delete(update, context.args)
+
+@BotAdapter.restricted
+async def bot_clear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⚠️ 确认清空数据库？回复'确认清空'继续")
+    return CONFIRM_CLEAR
+
+@BotAdapter.restricted
+async def bot_clear_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == '确认清空':
+        await BotAdapter.handle_clear(update)
+    else:
+        await update.message.reply_text("❌ 操作取消")
+    return ConversationHandler.END
+
+# ================ Telegram用户客户端实现 ================
+@user_restricted
+async def user_message_handler(event: events.NewMessage.Event):
+    """用户客户端消息处理器"""
+    if event.text.startswith('/'):
+        return
+    
+    result = await CoreService.process_message(event.text)
+    await BotAdapter.send_reply(event, result)
+
+@user_restricted
+async def user_command_handler(event: events.NewMessage.Event):
+    """用户客户端命令路由"""
+    parts = event.text.split()
+    if not parts:
+        return
+    
+    cmd = parts[0]
+    args = parts[1:] if len(parts) > 1 else []
+    
+    handlers = {
+        '/delete': lambda: BotAdapter.handle_delete(event, args),
+        '/clear': lambda: BotAdapter.handle_clear(event),
+        '/restore': lambda: BotAdapter.handle_restore(event),
+        '/import': lambda: BotAdapter.handle_import(event)
+    }
+    
+    if cmd in handlers:
+        try:
+            await handlers[cmd]()
+        except Exception as e:
+            await event.reply(f"❌ 命令执行失败: {str(e)}")
+
+# ================ 初始化函数 ================
 async def post_init(application: Application):
+    """Bot命令菜单初始化"""
     commands = [
         BotCommand("delete", "删除指定ID的记录"),
         BotCommand("clear", "清空数据库记录"),
@@ -550,54 +602,150 @@ async def post_init(application: Application):
     await application.bot.set_my_commands(commands)
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
 
-# ========================= 主程序入口 =========================
+async def start_bot():
+    """独立运行Bot服务"""
+    app = Application.builder() \
+        .token(Config.TG_TOKEN) \
+        .post_init(post_init) \
+        .get_updates_request(HTTPXRequest(
+            connect_timeout=60,
+            read_timeout=60
+        )).build()
+
+    # 注册处理器
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("clear", bot_clear_start)],
+        states={
+            CONFIRM_CLEAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot_clear_confirm)]
+        },
+        fallbacks=[CommandHandler("cancel", lambda u,c: ConversationHandler.END)]
+    )
+    
+    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("delete", bot_delete_handler))
+    app.add_handler(CommandHandler("restore", lambda u,c: BotAdapter.handle_restore(u)))
+    app.add_handler(CommandHandler("import", lambda u,c: BotAdapter.handle_import(u)))
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
+        bot_message_handler
+    ))
+    
+    try:
+        print(f"{Fore.CYAN}🔄 Bot服务运行中...")
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        
+        # 保持运行直到被取消
+        while True:
+            await asyncio.sleep(1)
+            
+    except asyncio.CancelledError:
+        print(f"{Fore.YELLOW}🔄 正在停止Bot服务...")
+    finally:
+        try:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except Exception as e:
+            print(f"{Fore.RED}⚠️ Bot关闭异常: {str(e)}")
+
+async def start_user_client():
+    """独立运行用户客户端"""
+    client = TelegramClient(
+        Config.TG_SESSION,
+        Config.TG_API_ID,
+        Config.TG_API_HASH,
+        base_logger="telethon.client"
+    )
+    
+    client.add_event_handler(
+        user_message_handler,
+        events.NewMessage(
+            func=lambda e: not e.text.startswith('/') and 
+            re.search(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+', e.text or '')
+        )
+    )
+    client.add_event_handler(
+        user_command_handler,
+        events.NewMessage(pattern=r'^/(delete|clear|restore|import)\b')
+    )
+    
+    try:
+        print(f"{Fore.CYAN}🔄 用户客户端运行中...")
+        await client.start()
+        
+        # 保持运行直到被取消
+        while True:
+            await asyncio.sleep(1)
+            
+    except asyncio.CancelledError:
+        print(f"{Fore.YELLOW}🔄 正在停止用户客户端...")
+    finally:
+        try:
+            if client.is_connected():
+                await client.disconnect()
+        except Exception as e:
+            print(f"{Fore.RED}⚠️ 客户端关闭异常: {str(e)}")
+        raise
+# ================ 修改主入口部分 ================
+async def run_services():
+    """协程方式运行服务"""
+    bot_task = None
+    client_task = None
+    
+    try:
+        if Config.TG_TOKEN:
+            bot_task = asyncio.create_task(start_bot())
+            print(f"{Fore.GREEN}🤖 Bot服务已启动")
+        
+        if Config.TG_API_ID and Config.TG_API_HASH:
+            client_task = asyncio.create_task(start_user_client())
+            print(f"{Fore.GREEN}👤 用户客户端已启动")
+        
+        await asyncio.gather(
+            *(task for task in [bot_task, client_task] if task is not None),
+            return_exceptions=True
+        )
+    except asyncio.CancelledError:
+        print(f"{Fore.YELLOW}🛑 正在停止服务...")
+        if bot_task: bot_task.cancel()
+        if client_task: client_task.cancel()
+        await asyncio.sleep(1)  # 给任务结束时间
+
+# ================ 主入口重构 ================
 if __name__ == "__main__":
+    # Windows系统特殊设置
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    # 初始化配置和服务
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
+
+    # 创建和管理事件循环
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
-    # 创建自定义请求配置
-    request = HTTPXRequest(
-        connection_pool_size=20,
-        connect_timeout=180.0,
-        read_timeout=180.0,
-        proxy=Config.PROXY_URL if Config.PROXY_URL else None
-    )
-    
-    builder = (
-        Application.builder()
-        .token(Config.TG_TOKEN)
-        .post_init(post_init)
-        .get_updates_request(request)
-        .connect_timeout(60.0)
-        .read_timeout(60.0)
-    )
-    
-    if Config.PROXY_URL:
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
-    
-    app = builder.build()
-    
-    # 添加会话处理器
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("clear", handle_clear_start)],
-        states={
-            CONFIRM_CLEAR: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_clear_confirm)
-            ]
-        },
-        fallbacks=[CommandHandler("cancel", cancel_clear)],
-    )
-    # 注册所有处理器    
-    app.add_handler(CommandHandler("delete", handle_delete))
-    app.add_handler(CommandHandler("restore", handle_restore))
-    app.add_handler(CommandHandler("import", handle_import))
-    app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(
-    filters.TEXT & 
-    ~filters.COMMAND & 
-    filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
-    handle_message
-))
-    
-    #print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
-    app.run_polling()
+    try:
+        main_task = loop.create_task(run_services())
+        loop.run_forever()
+        
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}🛑 检测到Ctrl+C，正在关闭...")
+    except Exception as e:
+        print(f"{Fore.RED}❌ 主循环异常: {str(e)}")
+    finally:
+        # 安全关闭流程
+        if not main_task.done():
+            main_task.cancel()
+            loop.run_until_complete(main_task)
+        
+        # 清理所有待处理任务
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        loop.close()
+        print(f"{Fore.RED}🚪 程序已完全退出")
