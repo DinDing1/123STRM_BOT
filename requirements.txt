@@ -3,12 +3,8 @@ python-123-client>=0.0.5
 
 #strm依赖
 python-telegram-bot==22.0
-python-telegram-bot[socks]==22.0
 colorama==0.4.6
 requests==2.31.0
-
-telethon>=1.40.0
-python-dotenv>=1.1.0
 
 #直链依赖
 fastapi>=0.68.0
