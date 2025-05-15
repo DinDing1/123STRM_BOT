@@ -2,13 +2,13 @@
 python-123-client>=0.0.5
 
 #strm依赖
-python-telegram-bot==22.0
+python-telegram-bot==21.0
 colorama==0.4.6
 requests==2.31.0
 
 #直链依赖
 fastapi>=0.68.0
 uvicorn>=0.15.0
-httpx>=0.27.0
+httpx>=0.24.0
 apscheduler>=3.10.0
 
