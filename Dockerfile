@@ -1,5 +1,5 @@
 # 第一阶段：构建Python依赖
-FROM python:3.13-slim as builder
+FROM python:3.12-slim as builder
 
 WORKDIR /app
 COPY requirements.txt .
@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # 第二阶段：运行时环境
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
