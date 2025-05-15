@@ -662,7 +662,6 @@ async def start_user_client():
         connection_retries=5,
         timeout=30,
         device_model="123STRM_BOT",
-        app_version="123云盘STRM"
     )
 
     client.add_event_handler(
