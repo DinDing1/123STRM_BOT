@@ -558,13 +558,18 @@ if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
 
-    # 创建Telegram请求处理器（正确参数传递）
+    from telegram.request import HTTPXRequest
+
+    # 获取经过处理的代理配置（确保为 None 或有效 URL）
+    proxy_url = Config.PROXY_URL
+
+    # 创建请求处理器（使用新参数名）
     request = HTTPXRequest(
+        proxy=proxy_url,  # 使用新参数名 'proxy'
         connection_pool_size=100,
-        proxy_url=Config.PROXY_URL,  # 代理URL直接传递
         connect_timeout=30.0,
         read_timeout=30.0,
-        http_version="1.1"  # 明确指定HTTP版本
+        http_version="1.1"
     )
 
     # 创建应用构建器
@@ -572,12 +577,12 @@ if __name__ == "__main__":
         Application.builder()
         .token(Config.TG_TOKEN)
         .post_init(post_init)
-        .get_updates_request(request)  # 注入配置
+        .get_updates_request(request)
     )
 
-    # 显示代理状态
-    if Config.PROXY_URL:
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
+    # 显示代理状态（仅当有有效代理时）
+    if proxy_url:
+        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{proxy_url}")
 
     # 构建应用实例
     app = builder.build()
