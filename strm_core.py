@@ -28,7 +28,7 @@ CONFIRM_CLEAR = 1
 # ========================= 全局配置 =========================
 class Config:
     TG_TOKEN = os.getenv("TG_TOKEN", "")     # Telegram机器人令牌
-    USER_ID = int(os.getenv("USER_ID", ""))  # 授权用户ID
+    USER_ID = list(map(int, os.getenv("USER_ID", "").split(',')))  # 授权用户ID
     BASE_URL = os.getenv("BASE_URL", "")    # STRM文件指向的基础URL
     PROXY_URL = os.getenv("PROXY_URL", "")   # 代理地址（可选）
     OUTPUT_ROOT = os.getenv("OUTPUT_ROOT", "./strm_output")# STRM文件输出目录
@@ -41,8 +41,8 @@ class Config:
 def restricted(func):
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
-        if user_id != Config.USER_ID:
-            return  # 未授权用户，直接返回，不进行任何响应
+        if user_id not in Config.USER_ID:  # 改为检查是否在列表中
+            return
         return await func(update, context)
     return wrapped
 # ========================= 数据库操作 =========================
