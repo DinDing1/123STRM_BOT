@@ -554,48 +554,51 @@ async def post_init(application: Application):
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
 
 # ========================= 主程序入口 =========================
+# ========================= 主程序入口 =========================
 if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
 
-    # 创建支持重试的HTTP客户端配置
     from httpx import AsyncClient, Limits, AsyncHTTPTransport
     from telegram.request import HTTPXRequest
 
-    # 配置网络传输层（含自动重试）
+    # 获取代理配置
+    proxy_url = Config.PROXY_URL if Config.PROXY_URL else None
+
+    # 创建传输层（集成代理和重试）
     transport = AsyncHTTPTransport(
-        retries=3,  # 自动重试3次
+        retries=3,
         limits=Limits(
-            max_keepalive_connections=50,  # 最大保持活动连接数
-            max_connections=100            # 最大总连接数
-        )
+            max_keepalive_connections=50,
+            max_connections=100
+        ),
+        proxy=proxy_url  # 代理在此处配置
     )
 
-    # 创建异步客户端实例
+    # 创建异步客户端
     async_client = AsyncClient(
-        timeout=30.0,  # 总超时时间（包含连接和读取）
-        proxies=Config.PROXY_URL if Config.PROXY_URL else None,  # 代理配置
+        timeout=30.0,
         transport=transport
     )
 
     # 构建Telegram请求处理器
     request = HTTPXRequest(client=async_client)
 
-    # 创建机器人应用构建器
+    # 创建应用构建器
     builder = (
         Application.builder()
         .token(Config.TG_TOKEN)
         .post_init(post_init)
-        .get_updates_request(request)  # 注入自定义HTTP配置
-        .connect_timeout(30.0)         # 单独控制连接超时
-        .read_timeout(30.0)            # 单独控制读取超时
+        .get_updates_request(request)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
     )
 
-    # 显示代理启用状态（调试用）
-    if Config.PROXY_URL:
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
+    # 显示代理状态
+    if proxy_url:
+        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{proxy_url}")
 
-    # 构建应用实例
+    # 构建应用实例并添加处理器
     app = builder.build()
 
     # 添加全局错误处理器
