@@ -554,17 +554,19 @@ async def post_init(application: Application):
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
 
 # ========================= 主程序入口 =========================
+# ========================= 主程序入口 =========================
 if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
     
-    # 创建自定义请求配置
+    # 创建自定义请求配置（修改后）
+    from httpx import Limits
     request = HTTPXRequest(
         connection_pool_size=20,
         connect_timeout=30.0,
         read_timeout=30.0,
-        proxy=Config.PROXY_URL if Config.PROXY_URL else None
-        retries=3,  # 添加自动重试
+        proxy=Config.PROXY_URL if Config.PROXY_URL else None,
+        retries=3,
         limits=Limits(max_keepalive_connections=50, max_connections=100)
     )
     
@@ -577,10 +579,17 @@ if __name__ == "__main__":
         .read_timeout(60.0)
     )
     
-    if Config.PROXY_URL:
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
-    
+    # 添加全局错误处理（新增）
+    async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if isinstance(context.error, NetworkError):
+            logger.error(f"网络连接异常: {context.error}, 10秒后自动重连...")
+            await asyncio.sleep(10)
+            await app.start()
+        else:
+            logger.error(f"未处理的异常: {context.error}")
+
     app = builder.build()
+    app.add_error_handler(error_handler)
     
     # 添加会话处理器
     conv_handler = ConversationHandler(
@@ -603,16 +612,6 @@ if __name__ == "__main__":
     filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
     handle_message
 ))
-    async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if isinstance(context.error, NetworkError):
-        logger.error(f"网络错误: {context.error}, 10秒后重试...")
-        await asyncio.sleep(10)
-        await app.start()
-    else:
-        logger.error(f"未处理的异常: {context.error}")
-
-# 在app.run_polling()之前添加错误处理器
-    app.add_error_handler(error_handler)
 
     #print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
     app.run_polling()
