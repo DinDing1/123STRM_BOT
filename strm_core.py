@@ -3,6 +3,7 @@ import re
 import sqlite3
 import requests
 import hashlib
+import asyncio
 from p123.tool import share_iterdir
 from datetime import datetime
 from colorama import init, Fore, Style
@@ -19,6 +20,7 @@ from urllib.parse import unquote, urlparse
 from pathlib import Path
 from telegram.request import HTTPXRequest
 from httpx import AsyncClient, Limits
+from telegram.error import NetworkError
 
 # 初始化colorama（控制台彩色输出）
 init(autoreset=True)
