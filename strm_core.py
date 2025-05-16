@@ -18,6 +18,7 @@ from telegram.ext import (
 from urllib.parse import unquote, urlparse
 from pathlib import Path
 from telegram.request import HTTPXRequest
+from httpx import AsyncClient, Limits
 
 # 初始化colorama（控制台彩色输出）
 init(autoreset=True)
