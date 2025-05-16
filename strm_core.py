@@ -3,7 +3,6 @@ import re
 import sqlite3
 import requests
 import hashlib
-import asyncio
 from p123.tool import share_iterdir
 from datetime import datetime
 from colorama import init, Fore, Style
@@ -19,8 +18,6 @@ from telegram.ext import (
 from urllib.parse import unquote, urlparse
 from pathlib import Path
 from telegram.request import HTTPXRequest
-from httpx import AsyncClient, Limits, AsyncHTTPTransport
-from telegram.error import NetworkError
 
 # 初始化colorama（控制台彩色输出）
 init(autoreset=True)
@@ -557,48 +554,29 @@ async def post_init(application: Application):
 if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
-
-    from telegram.request import HTTPXRequest
-
-    # 获取经过处理的代理配置（确保为 None 或有效 URL）
-    proxy_url = Config.PROXY_URL
-
-    # 创建请求处理器（使用新参数名）
+    
+    # 创建自定义请求配置
     request = HTTPXRequest(
-        proxy=proxy_url,  # 使用新参数名 'proxy'
-        connection_pool_size=100,
+        connection_pool_size=20,
         connect_timeout=30.0,
         read_timeout=30.0,
-        http_version="1.1"
+        proxy=Config.PROXY_URL if Config.PROXY_URL else None
     )
-
-    # 创建应用构建器
+    
     builder = (
         Application.builder()
         .token(Config.TG_TOKEN)
         .post_init(post_init)
         .get_updates_request(request)
+        .connect_timeout(60.0)
+        .read_timeout(60.0)
     )
-
-    # 显示代理状态（仅当有有效代理时）
-    if proxy_url:
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{proxy_url}")
-
-    # 构建应用实例
+    
+    if Config.PROXY_URL:
+        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
+    
     app = builder.build()
-
-    # 添加全局错误处理器（保持不变）
-    async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if isinstance(context.error, NetworkError):
-            logger.error(f"网络错误: {context.error}, 10秒后重试...")
-            await asyncio.sleep(10)
-            await app.initialize()
-            await app.start()
-        else:
-            logger.error(f"未处理的异常: {context.error}")
-
-    app.add_error_handler(error_handler)
-
+    
     # 添加会话处理器
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("clear", handle_clear_start)],
@@ -609,19 +587,17 @@ if __name__ == "__main__":
         },
         fallbacks=[CommandHandler("cancel", cancel_clear)],
     )
-    
-    # 注册所有处理器
+    # 注册所有处理器    
     app.add_handler(CommandHandler("delete", handle_delete))
     app.add_handler(CommandHandler("restore", handle_restore))
     app.add_handler(CommandHandler("import", handle_import))
     app.add_handler(conv_handler)
     app.add_handler(MessageHandler(
-        filters.TEXT & 
-        ~filters.COMMAND & 
-        filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
-        handle_message
-    ))
-
-    # 启动机器人
-    print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)}")
+    filters.TEXT & 
+    ~filters.COMMAND & 
+    filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
+    handle_message
+))
+    
+    #print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
     app.run_polling()
