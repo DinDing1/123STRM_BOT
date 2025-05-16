@@ -554,7 +554,6 @@ async def post_init(application: Application):
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
 
 # ========================= 主程序入口 =========================
-# ========================= 主程序入口 =========================
 if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
