@@ -558,8 +558,6 @@ if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
 
-    from telegram.request import HTTPXRequest
-
     # 创建Telegram请求处理器（正确参数传递）
     request = HTTPXRequest(
         connection_pool_size=100,
