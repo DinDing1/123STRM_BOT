@@ -603,6 +603,16 @@ if __name__ == "__main__":
     filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
     handle_message
 ))
-    
+    async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if isinstance(context.error, NetworkError):
+        logger.error(f"网络错误: {context.error}, 10秒后重试...")
+        await asyncio.sleep(10)
+        await app.start()
+    else:
+        logger.error(f"未处理的异常: {context.error}")
+
+# 在app.run_polling()之前添加错误处理器
+    app.add_error_handler(error_handler)
+
     #print(f"{Fore.GREEN}🤖 TG机器人已启动 | 数据库：{Config.DB_PATH} | STRM输出目录：{os.path.abspath(Config.OUTPUT_ROOT)} ")
     app.run_polling()
