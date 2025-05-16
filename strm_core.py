@@ -559,9 +559,11 @@ if __name__ == "__main__":
     # 创建自定义请求配置
     request = HTTPXRequest(
         connection_pool_size=20,
-        connect_timeout=180.0,
-        read_timeout=180.0,
+        connect_timeout=30.0,
+        read_timeout=30.0,
         proxy=Config.PROXY_URL if Config.PROXY_URL else None
+        retries=3,  # 添加自动重试
+        limits=Limits(max_keepalive_connections=50, max_connections=100)
     )
     
     builder = (
