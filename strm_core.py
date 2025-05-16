@@ -554,62 +554,45 @@ async def post_init(application: Application):
     print(f"{Fore.CYAN}📱 Telegram菜单已加载")
 
 # ========================= 主程序入口 =========================
-# ========================= 主程序入口 =========================
 if __name__ == "__main__":
     init_db()
     os.makedirs(Config.OUTPUT_ROOT, exist_ok=True)
 
-    from httpx import AsyncClient, Limits, AsyncHTTPTransport
     from telegram.request import HTTPXRequest
 
-    # 获取代理配置
-    proxy_url = Config.PROXY_URL if Config.PROXY_URL else None
-
-    # 创建传输层（集成代理和重试）
-    transport = AsyncHTTPTransport(
-        retries=3,
-        limits=Limits(
-            max_keepalive_connections=50,
-            max_connections=100
-        ),
-        proxy=proxy_url  # 代理在此处配置
+    # 创建Telegram请求处理器（正确参数传递）
+    request = HTTPXRequest(
+        connection_pool_size=100,
+        proxy_url=Config.PROXY_URL,  # 代理URL直接传递
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        http_version="1.1"  # 明确指定HTTP版本
     )
-
-    # 创建异步客户端
-    async_client = AsyncClient(
-        timeout=30.0,
-        transport=transport
-    )
-
-    # 构建Telegram请求处理器
-    request = HTTPXRequest(client=async_client)
 
     # 创建应用构建器
     builder = (
         Application.builder()
         .token(Config.TG_TOKEN)
         .post_init(post_init)
-        .get_updates_request(request)
-        .connect_timeout(30.0)
-        .read_timeout(30.0)
+        .get_updates_request(request)  # 注入配置
     )
 
     # 显示代理状态
-    if proxy_url:
-        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{proxy_url}")
+    if Config.PROXY_URL:
+        print(f"{Fore.CYAN}🔗 Telegram代理已启用：{Config.PROXY_URL}")
 
-    # 构建应用实例并添加处理器
+    # 构建应用实例
     app = builder.build()
 
-    # 添加全局错误处理器
+    # 添加全局错误处理器（保持不变）
     async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if isinstance(context.error, NetworkError):
-            logger.error(f"网络错误: {context.error}, 10秒后尝试重连...")
+            logger.error(f"网络错误: {context.error}, 10秒后重试...")
             await asyncio.sleep(10)
             await app.initialize()
             await app.start()
         else:
-            logger.error(f"未处理的异常: {context.error}", exc_info=True)
+            logger.error(f"未处理的异常: {context.error}")
 
     app.add_error_handler(error_handler)
 
