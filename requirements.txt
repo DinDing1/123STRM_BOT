@@ -1,5 +1,5 @@
 #核心依赖
-python-123-client>=0.0.5
+python-123-client==0.0.5.2
 
 #strm依赖
 python-telegram-bot==21.1.1
