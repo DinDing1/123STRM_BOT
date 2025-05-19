@@ -595,7 +595,7 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(
     filters.TEXT & 
     ~filters.COMMAND & 
-    filters.Regex(r'https?://[^\s/]+/s/[a-zA-Z0-9\-_]+'),
+    filters.Regex(r'https?://(?:[a-zA-Z0-9-]+\.)*123[a-zA-Z0-9-]*\.[a-z]{2,6}/s/)([a-zA-Z0-9_-]+'),
     handle_message
 ))
     
