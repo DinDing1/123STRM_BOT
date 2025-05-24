@@ -34,12 +34,12 @@ COPY auth_check.sh entrypoint.sh strm_core.py direct_link_service.py VERSION ./
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 
 # 设置权限
-RUN chmod +x auth_check.sh entrypoint.sh
+#RUN chmod +x auth_check.sh entrypoint.sh
 
 # 环境变量配置
 ENV PATH="/root/.local/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    AUTH_API_URL="http://158.178.236.135:35000/verify" \ 
+    #AUTH_API_URL="http://158.178.236.135:35000/verify" \ 
     DEVICE_ID_FILE="/app/config/device_id" \
     OUTPUT_ROOT="/app/strm_output" \
     DB_DIR="/app/data"
@@ -49,7 +49,7 @@ VOLUME /app/config
 VOLUME /app/data  
 
 # 容器入口点
-ENTRYPOINT ["./entrypoint.sh"]
+#ENTRYPOINT ["./entrypoint.sh"]
 
 # 默认启动命令（鉴权通过后执行）
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
