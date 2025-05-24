@@ -39,7 +39,7 @@ RUN chmod +x auth_check.sh entrypoint.sh
 # 环境变量配置
 ENV PATH="/root/.local/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    AUTH_API_URL="http://cc.38u.net:35000/verify" \ 
+    AUTH_API_URL="http://158.178.236.135:35000/verify" \ 
     DEVICE_ID_FILE="/app/config/device_id" \
     OUTPUT_ROOT="/app/strm_output" \
     DB_DIR="/app/data"
